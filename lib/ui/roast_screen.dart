@@ -108,27 +108,87 @@ class _RoastScreenState extends State<RoastScreen> {
     }
   }
 
-  void _event(RoastEvent e) {
-    final err = c.markEvent(e);
-    if (err != null) {
-      if (c.profile.indexOf(e) != null) {
-        _msg('${e.label} đã đánh dấu – nhấn giữ để bỏ');
-      } else {
-        _msg(err);
-      }
-    }
+  @override
+  void initState() {
+    super.initState();
+    c.notice.addListener(_onNotice);
   }
 
-  Future<void> _undo(RoastEvent e) async {
-    if (c.profile.indexOf(e) == null) return;
-    final go = await _confirm('Bỏ ${e.label}?', 'Bỏ đánh dấu sự kiện ${e.label}?', ok: 'Bỏ');
-    if (!go) return;
-    final err = c.undoEvent(e);
-    if (err != null) _msg(err);
+  @override
+  void dispose() {
+    c.notice.removeListener(_onNotice);
+    super.dispose();
+  }
+
+  void _onNotice() {
+    final n = c.notice.value;
+    if (n != null && mounted) _msg(n);
+  }
+
+  Future<void> _pressButton(int i) async {
+    final err = await c.pressButton(i);
+    if (err != null && mounted) _msg(err, error: true);
+  }
+
+  Future<void> _eventsDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AnimatedBuilder(
+        animation: c,
+        builder: (ctx, _) {
+          final p = c.profile;
+          return AlertDialog(
+            title: const Text('Sự kiện mẻ rang'),
+            content: SizedBox(
+              width: 420,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Các sự kiện được tự nhận diện. Chỉ dùng màn hình này khi cần sửa tay.',
+                    style: TextStyle(fontSize: 12, color: Colors.black54),
+                  ),
+                  for (final e in RoastEvent.values)
+                    ListTile(
+                      dense: true,
+                      title: Text(e.label, style: const TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Text(() {
+                        final i = e == RoastEvent.tp ? p.effectiveTP : p.indexOf(e);
+                        if (i == null) return 'chưa có';
+                        final t = e == RoastEvent.charge ? '' : '${fmtTime(p.rel(i))}  •  ';
+                        return '$t${fmtTemp(p.bt[i])}°C';
+                      }()),
+                      trailing: p.indexOf(e) != null
+                          ? TextButton(
+                              onPressed: () {
+                                final err = c.undoEvent(e);
+                                if (err != null) _msg(err);
+                              },
+                              child: const Text('Bỏ'))
+                          : TextButton(
+                              onPressed: c.canMark(e)
+                                  ? () {
+                                      final err = c.markEvent(e);
+                                      if (err != null) _msg(err);
+                                    }
+                                  : null,
+                              child: const Text('Đánh dấu ngay')),
+                    ),
+                ],
+              ),
+            ),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Đóng'))],
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _menu(String v) async {
     switch (v) {
+      case 'events':
+        await _eventsDialog();
+        break;
       case 'props':
         await _editProperties();
         break;
@@ -197,6 +257,7 @@ class _RoastScreenState extends State<RoastScreen> {
             icon: const Icon(Icons.menu),
             onSelected: _menu,
             itemBuilder: (_) => [
+              const PopupMenuItem(value: 'events', child: ListTile(leading: Icon(Icons.flag), title: Text('Sự kiện (sửa tay)'))),
               const PopupMenuItem(value: 'props', child: ListTile(leading: Icon(Icons.edit_note), title: Text('Thuộc tính mẻ rang'))),
               PopupMenuItem(
                   value: 'save',
@@ -241,28 +302,47 @@ class _RoastScreenState extends State<RoastScreen> {
     );
   }
 
-  Widget _eventBar() {
-    final p = c.profile;
+  Widget _buttonBar() {
+    final btns = [
+      for (var i = 0; i < c.settings.buttons.length; i++)
+        if (c.settings.buttons[i].visible) i
+    ];
+    if (btns.isEmpty) return const SizedBox(height: 4);
+    Widget one(int i) {
+      final b = c.settings.buttons[i];
+      final pressed = i < c.buttonStates.length && c.buttonStates[i] != 0;
+      return ArtisanButton(
+        label: b.label,
+        color: Color(b.color),
+        textColor: Color(b.textColor),
+        pressed: pressed,
+        last: c.lastButton == i,
+        enabled: c.isOn,
+        onTap: () => _pressButton(i),
+      );
+    }
+
     return SizedBox(
       height: 50,
-      child: Row(
-        children: [
-          for (final e in RoastEvent.values)
-            Expanded(
-              child: EventButton(
-                label: e.label,
-                sub: p.indexOf(e) != null
-                    ? (e == RoastEvent.charge ? fmtTemp(p.bt[p.indexOf(e)!]) : fmtTime(p.rel(p.indexOf(e)!)))
-                    : null,
-                marked: p.indexOf(e) != null,
-                enabled: c.canMark(e),
-                onTap: () => _event(e),
-                onLongPress: () => _undo(e),
-              ),
+      child: btns.length <= 10
+          ? Row(children: [for (final i in btns) Expanded(child: one(i))])
+          : ListView(
+              scrollDirection: Axis.horizontal,
+              children: [for (final i in btns) SizedBox(width: 96, child: one(i))],
             ),
-        ],
-      ),
     );
+  }
+
+  String _eventSummary() {
+    final p = c.profile;
+    String one(RoastEvent e) {
+      final i = e == RoastEvent.tp ? p.effectiveTP : p.indexOf(e);
+      if (i == null) return '${e.shortLabel} –';
+      if (e == RoastEvent.charge) return '${e.shortLabel} ✓';
+      return '${e.shortLabel} ${fmtTime(p.rel(i))}';
+    }
+
+    return RoastEvent.values.map(one).join('  •  ');
   }
 
   Widget _statusLine() {
@@ -274,8 +354,10 @@ class _RoastScreenState extends State<RoastScreen> {
       child: Text(
         err ??
             (c.isOn
-                ? 'Đang ghi  •  ${c.profile.length} mẫu  •  chu kỳ ${c.settings.samplingInterval.toStringAsFixed(0)} s'
-                : (c.currentFile != null ? 'File: ${c.currentFile}' : 'Sẵn sàng – bấm ON để bắt đầu')),
+                ? '${_eventSummary()}     (${c.profile.length} mẫu, ${c.settings.samplingInterval.toStringAsFixed(0)} s)'
+                : (c.hasData
+                    ? '${_eventSummary()}${c.currentFile != null ? '     ${c.currentFile}' : ''}'
+                    : 'Sẵn sàng – bấm ON để bắt đầu. CHARGE, TP, DRY END, FC START, DROP được tự nhận diện.')),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(fontSize: 10.5, color: err != null ? const Color(0xFFB00020) : Colors.black54),
@@ -306,7 +388,7 @@ class _RoastScreenState extends State<RoastScreen> {
             ],
           ),
         ),
-        _eventBar(),
+        _buttonBar(),
         _statusLine(),
       ],
     );
@@ -325,7 +407,7 @@ class _RoastScreenState extends State<RoastScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 6),
             child: Column(children: [for (final i in ctrls) ControlSlider(c: c, index: i, vertical: false)]),
           ),
-        _eventBar(),
+        _buttonBar(),
         _statusLine(),
       ],
     );

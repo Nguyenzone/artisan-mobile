@@ -10,8 +10,8 @@ class InputChannelConfig {
     this.slaveId = 1,
     this.address = 0,
     this.functionCode = 3,
-    this.dataType = 'int16',
-    this.divider = 10,
+    this.dataType = 'uint16',
+    this.divider = 1,
     this.offset = 0,
   });
 
@@ -44,33 +44,27 @@ class InputChannelConfig {
       );
 }
 
-/// Cấu hình một thanh trượt điều khiển (Air / Drum / Damper / Burner).
+/// Thanh trượt điều khiển (Artisan: Config > Events > Sliders).
 class ControlConfig {
   ControlConfig({
     required this.label,
     this.visible = true,
-    this.modbusEnabled = true,
-    this.slaveId = 1,
-    this.address = 10,
-    this.useFc16 = false,
+    this.command = '',
     this.min = 0,
     this.max = 100,
-    this.step = 5,
+    this.step = 1,
     this.factor = 1,
     this.offset = 0,
-    this.unit = '%',
+    this.unit = '',
   });
 
   String label;
   bool visible;
-  bool modbusEnabled;
-  int slaveId;
-  int address;
-  bool useFc16;
+  String command; // Modbus Command, ví dụ write([3,0,{}])
   int min;
   int max;
   int step;
-  double factor; // giá trị ghi = round(giá trị * factor + offset)
+  double factor; // {} = round(giá trị * factor + offset)
   double offset;
   String unit;
 
@@ -79,10 +73,7 @@ class ControlConfig {
   Map<String, dynamic> toJson() => {
         'label': label,
         'visible': visible,
-        'modbusEnabled': modbusEnabled,
-        'slaveId': slaveId,
-        'address': address,
-        'useFc16': useFc16,
+        'command': command,
         'min': min,
         'max': max,
         'step': step,
@@ -91,38 +82,129 @@ class ControlConfig {
         'unit': unit,
       };
 
-  factory ControlConfig.fromJson(Map<String, dynamic> j, ControlConfig def) => ControlConfig(
-        label: j['label'] as String? ?? def.label,
-        visible: j['visible'] as bool? ?? def.visible,
-        modbusEnabled: j['modbusEnabled'] as bool? ?? def.modbusEnabled,
-        slaveId: (j['slaveId'] as num?)?.toInt() ?? def.slaveId,
-        address: (j['address'] as num?)?.toInt() ?? def.address,
-        useFc16: j['useFc16'] as bool? ?? def.useFc16,
-        min: (j['min'] as num?)?.toInt() ?? def.min,
-        max: (j['max'] as num?)?.toInt() ?? def.max,
-        step: (j['step'] as num?)?.toInt() ?? def.step,
-        factor: (j['factor'] as num?)?.toDouble() ?? def.factor,
-        offset: (j['offset'] as num?)?.toDouble() ?? def.offset,
-        unit: j['unit'] as String? ?? def.unit,
+  factory ControlConfig.fromJson(Map<String, dynamic> j, ControlConfig def) {
+    var cmd = j['command'] as String?;
+    if (cmd == null && j['address'] != null) {
+      // tương thích cài đặt của phiên bản 1
+      final s = (j['slaveId'] as num?)?.toInt() ?? 1;
+      final a = (j['address'] as num).toInt();
+      final fc16 = j['useFc16'] == true;
+      final enabled = j['modbusEnabled'] != false;
+      cmd = !enabled ? '' : (fc16 ? 'writem($s,$a,{})' : 'write([$s,$a,{}])');
+    }
+    return ControlConfig(
+      label: j['label'] as String? ?? def.label,
+      visible: j['visible'] as bool? ?? def.visible,
+      command: cmd ?? def.command,
+      min: (j['min'] as num?)?.toInt() ?? def.min,
+      max: (j['max'] as num?)?.toInt() ?? def.max,
+      step: (j['step'] as num?)?.toInt() ?? def.step,
+      factor: (j['factor'] as num?)?.toDouble() ?? def.factor,
+      offset: (j['offset'] as num?)?.toDouble() ?? def.offset,
+      unit: j['unit'] as String? ?? def.unit,
+    );
+  }
+}
+
+/// Loại nút sự kiện – cùng mã số với Artisan (Config > Events > Buttons > Type).
+class ButtonType {
+  static const int air = 0;
+  static const int drum = 1;
+  static const int damper = 2;
+  static const int burner = 3;
+  static const int none = 4; // " " – chỉ gửi lệnh, không ghi sự kiện
+  static const int relAir = 5; // ±Air
+  static const int relDrum = 6; // ±Drum
+  static const int relDamper = 7; // ±Damper
+  static const int relBurner = 8; // ±Burner
+
+  static const Map<int, String> names = {
+    none: '(không)',
+    air: 'Air',
+    drum: 'Drum',
+    damper: 'Damper',
+    burner: 'Burner',
+    relAir: '±Air',
+    relDrum: '±Drum',
+    relDamper: '±Damper',
+    relBurner: '±Burner',
+  };
+}
+
+/// Nút sự kiện tuỳ chỉnh (Artisan: Config > Events > Buttons).
+class EventButtonConfig {
+  EventButtonConfig({
+    required this.label,
+    this.type = ButtonType.none,
+    this.value = 0,
+    this.command = '',
+    this.color = 0xFF147BB3,
+    this.textColor = 0xFFFFFFFF,
+    this.visible = true,
+  });
+
+  String label;
+  int type;
+  int value;
+  String command;
+  int color; // ARGB
+  int textColor;
+  bool visible;
+
+  Map<String, dynamic> toJson() => {
+        'label': label,
+        'type': type,
+        'value': value,
+        'command': command,
+        'color': color,
+        'textColor': textColor,
+        'visible': visible,
+      };
+
+  factory EventButtonConfig.fromJson(Map<String, dynamic> j) => EventButtonConfig(
+        label: j['label'] as String? ?? 'Nút',
+        type: (j['type'] as num?)?.toInt() ?? ButtonType.none,
+        value: (j['value'] as num?)?.toInt() ?? 0,
+        command: j['command'] as String? ?? '',
+        color: (j['color'] as num?)?.toInt() ?? 0xFF147BB3,
+        textColor: (j['textColor'] as num?)?.toInt() ?? 0xFFFFFFFF,
+        visible: j['visible'] as bool? ?? true,
       );
+
+  EventButtonConfig copy() => EventButtonConfig.fromJson(toJson());
 }
 
 /// Toàn bộ cài đặt của ứng dụng (lưu trong settings.json).
 class AppSettings {
+  static const int currentVersion = 2;
+
   // Kết nối
   bool simulator = true;
-  String host = '192.168.1.100';
+  String host = '10.10.100.254';
   int port = 502;
   int timeoutMs = 1000;
   double samplingInterval = 2.0;
+  bool littleEndianWords = true;
 
-  // Kênh nhiệt độ
+  // Kênh nhiệt độ (theo cấu hình Artisan của máy rang Minh Đăng)
   InputChannelConfig bt = _defBT();
   InputChannelConfig et = _defET();
   InputChannelConfig ct = _defCT();
 
   // Điều khiển: thứ tự giống etypes của Artisan: 0 Air, 1 Drum, 2 Damper, 3 Burner
-  List<ControlConfig> controls = _defControls();
+  List<ControlConfig> controls = defaultControls();
+
+  // Nút sự kiện tuỳ chỉnh
+  List<EventButtonConfig> buttons = defaultButtons();
+
+  // Tự động đánh dấu sự kiện
+  bool autoCharge = true;
+  bool autoTP = true;
+  bool autoDryEnd = true;
+  double dryEndTemp = 150;
+  bool autoFcStart = true;
+  double fcStartTemp = 198;
+  bool autoDrop = true;
 
   // Đồ thị
   double tempMin = 0;
@@ -143,29 +225,50 @@ class AppSettings {
   String? backgroundFile; // tên file trong thư viện
   bool sampleInstalled = false;
 
-  static InputChannelConfig _defBT() => InputChannelConfig(address: 0);
-  static InputChannelConfig _defET() => InputChannelConfig(address: 1);
-  static InputChannelConfig _defCT() => InputChannelConfig(address: 2);
+  static InputChannelConfig _defET() => InputChannelConfig(slaveId: 1, address: 0); // Artisan Input 1
+  static InputChannelConfig _defBT() => InputChannelConfig(slaveId: 2, address: 0); // Artisan Input 2
+  static InputChannelConfig _defCT() => InputChannelConfig(slaveId: 5, address: 0); // Artisan Input 6
 
-  static List<ControlConfig> _defControls() => [
-        ControlConfig(label: 'Quạt', address: 11),
-        ControlConfig(label: 'Trống', address: 12),
-        ControlConfig(label: 'Van gió', address: 13, visible: false),
-        ControlConfig(label: 'Gas', address: 10),
+  static List<ControlConfig> defaultControls() => [
+        ControlConfig(label: 'Quạt', command: 'write([3,1,{}])', max: 99),
+        ControlConfig(label: 'Trống', command: 'write([3,2,{}])', max: 99),
+        ControlConfig(label: 'Van gió', command: '', visible: false),
+        ControlConfig(label: 'Gas', command: 'write([3,0,{}])', max: 99),
+      ];
+
+  static List<EventButtonConfig> defaultButtons() => [
+        EventButtonConfig(label: 'Air/ Drum', command: 'write([3,4,1])', color: 0xFF0B5E0B),
+        EventButtonConfig(label: 'Air+', type: ButtonType.relAir, value: 5, command: 'writem(3,1,{})', color: 0xFF0D0D8A),
+        EventButtonConfig(label: 'Air-', type: ButtonType.relAir, value: -5, command: 'writem(3,1,{})', color: 0xFF808080),
+        EventButtonConfig(label: 'Burner', command: 'write([3,5,1])', color: 0xFFF01414),
+        EventButtonConfig(label: 'Burner+', type: ButtonType.relBurner, value: 5, command: 'writem(3,0,{})', color: 0xFFA30E0E),
+        EventButtonConfig(label: 'Burn-', type: ButtonType.relBurner, value: -5, command: 'writem(3,0,{})', color: 0xFF808080),
+        EventButtonConfig(label: 'Cool.Fan', command: 'write([3,7,1])', color: 0xFFF2A07E),
+        EventButtonConfig(label: 'Mix', command: 'write([3,6,1])', color: 0xFFF2A07E),
       ];
 
   static const List<String> etypeNames = ['Air', 'Drum', 'Damper', 'Burner'];
 
   Map<String, dynamic> toJson() => {
+        'version': currentVersion,
         'simulator': simulator,
         'host': host,
         'port': port,
         'timeoutMs': timeoutMs,
         'samplingInterval': samplingInterval,
+        'littleEndianWords': littleEndianWords,
         'bt': bt.toJson(),
         'et': et.toJson(),
         'ct': ct.toJson(),
         'controls': controls.map((c) => c.toJson()).toList(),
+        'buttons': buttons.map((b) => b.toJson()).toList(),
+        'autoCharge': autoCharge,
+        'autoTP': autoTP,
+        'autoDryEnd': autoDryEnd,
+        'dryEndTemp': dryEndTemp,
+        'autoFcStart': autoFcStart,
+        'fcStartTemp': fcStartTemp,
+        'autoDrop': autoDrop,
         'tempMin': tempMin,
         'tempMax': tempMax,
         'rorMin': rorMin,
@@ -190,25 +293,44 @@ class AppSettings {
       return v is T ? v : null;
     }
 
+    final version = g<num>('version')?.toInt() ?? 1;
     s.simulator = g<bool>('simulator') ?? s.simulator;
-    s.host = g<String>('host') ?? s.host;
-    s.port = g<num>('port')?.toInt() ?? s.port;
-    s.timeoutMs = g<num>('timeoutMs')?.toInt() ?? s.timeoutMs;
-    s.samplingInterval = g<num>('samplingInterval')?.toDouble() ?? s.samplingInterval;
-    final bt = g<Map<String, dynamic>>('bt');
-    if (bt != null) s.bt = InputChannelConfig.fromJson(bt, _defBT());
-    final et = g<Map<String, dynamic>>('et');
-    if (et != null) s.et = InputChannelConfig.fromJson(et, _defET());
-    final ct = g<Map<String, dynamic>>('ct');
-    if (ct != null) s.ct = InputChannelConfig.fromJson(ct, _defCT());
-    final cl = g<List<dynamic>>('controls');
-    if (cl != null) {
-      final defs = _defControls();
-      for (var i = 0; i < defs.length && i < cl.length; i++) {
-        final e = cl[i];
-        if (e is Map<String, dynamic>) s.controls[i] = ControlConfig.fromJson(e, defs[i]);
+    // Phiên bản 1 dùng địa chỉ mẫu – chuyển sang cấu hình máy rang thật (theo Artisan)
+    if (version >= 2) {
+      s.host = g<String>('host') ?? s.host;
+      s.port = g<num>('port')?.toInt() ?? s.port;
+      s.timeoutMs = g<num>('timeoutMs')?.toInt() ?? s.timeoutMs;
+      s.littleEndianWords = g<bool>('littleEndianWords') ?? s.littleEndianWords;
+      final bt = g<Map<String, dynamic>>('bt');
+      if (bt != null) s.bt = InputChannelConfig.fromJson(bt, _defBT());
+      final et = g<Map<String, dynamic>>('et');
+      if (et != null) s.et = InputChannelConfig.fromJson(et, _defET());
+      final ct = g<Map<String, dynamic>>('ct');
+      if (ct != null) s.ct = InputChannelConfig.fromJson(ct, _defCT());
+      final cl = g<List<dynamic>>('controls');
+      if (cl != null) {
+        final defs = defaultControls();
+        for (var i = 0; i < defs.length && i < cl.length; i++) {
+          final e = cl[i];
+          if (e is Map<String, dynamic>) s.controls[i] = ControlConfig.fromJson(e, defs[i]);
+        }
+      }
+      final bl = g<List<dynamic>>('buttons');
+      if (bl != null) {
+        s.buttons = [
+          for (final e in bl)
+            if (e is Map<String, dynamic>) EventButtonConfig.fromJson(e)
+        ];
       }
     }
+    s.samplingInterval = g<num>('samplingInterval')?.toDouble() ?? s.samplingInterval;
+    s.autoCharge = g<bool>('autoCharge') ?? s.autoCharge;
+    s.autoTP = g<bool>('autoTP') ?? s.autoTP;
+    s.autoDryEnd = g<bool>('autoDryEnd') ?? s.autoDryEnd;
+    s.dryEndTemp = g<num>('dryEndTemp')?.toDouble() ?? s.dryEndTemp;
+    s.autoFcStart = g<bool>('autoFcStart') ?? s.autoFcStart;
+    s.fcStartTemp = g<num>('fcStartTemp')?.toDouble() ?? s.fcStartTemp;
+    s.autoDrop = g<bool>('autoDrop') ?? s.autoDrop;
     s.tempMin = g<num>('tempMin')?.toDouble() ?? s.tempMin;
     s.tempMax = g<num>('tempMax')?.toDouble() ?? s.tempMax;
     s.rorMin = g<num>('rorMin')?.toDouble() ?? s.rorMin;

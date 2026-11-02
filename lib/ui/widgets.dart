@@ -328,3 +328,56 @@ class ControlSlider extends StatelessWidget {
     );
   }
 }
+
+/// Nút sự kiện tuỳ chỉnh kiểu Artisan (màu tuỳ chọn, viền vàng khi đang bật).
+class ArtisanButton extends StatelessWidget {
+  const ArtisanButton({
+    super.key,
+    required this.label,
+    required this.color,
+    required this.textColor,
+    required this.pressed,
+    required this.last,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color color;
+  final Color textColor;
+  final bool pressed;
+  final bool last;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = enabled ? color : color.withAlpha(0x70);
+    return Padding(
+      padding: const EdgeInsets.all(2),
+      child: Material(
+        color: bg,
+        borderRadius: BorderRadius.circular(4),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(4),
+          onTap: onTap,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(4),
+              border: pressed
+                  ? Border.all(color: const Color(0xFFFFD54F), width: 3)
+                  : (last ? Border.all(color: Colors.white70, width: 1.5) : null),
+            ),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(label,
+                  style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 15)),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

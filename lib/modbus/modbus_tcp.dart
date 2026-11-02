@@ -226,6 +226,21 @@ class ModbusTcpClient {
     ]);
   }
 
+  /// FC15 – ghi nhiều coil.
+  Future<void> writeMultipleCoils(int unitId, int address, List<bool> values) async {
+    final bytes = List<int>.filled((values.length + 7) ~/ 8, 0);
+    for (var i = 0; i < values.length; i++) {
+      if (values[i]) bytes[i ~/ 8] |= 1 << (i % 8);
+    }
+    await _transact(unitId, [
+      15,
+      (address >> 8) & 0xFF, address & 0xFF,
+      (values.length >> 8) & 0xFF, values.length & 0xFF,
+      bytes.length,
+      ...bytes,
+    ]);
+  }
+
   /// Giải mã giá trị từ thanh ghi.
   /// [dataType]: int16, uint16, int32, uint32, float32 (ABCD), float32_cdab.
   static double decode(List<int> regs, String dataType) {

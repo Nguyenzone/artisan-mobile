@@ -8,6 +8,7 @@ import '../models/roast_profile.dart';
 import '../services/roast_storage.dart';
 import '../services/roaster_device.dart';
 import '../services/settings.dart';
+import 'auto_events.dart';
 import 'ror.dart';
 
 const String kSampleAsset = 'assets/profiles/profile_mau_rang_vua.alog';
@@ -47,6 +48,16 @@ class RoastController extends ChangeNotifier {
   List<double?> bgRorBT = [];
 
   List<double> controlValues;
+
+  /// Tự nhận diện sự kiện (CHARGE, TP, DRY END, FC START, DROP).
+  final AutoEventDetector autoEvents = AutoEventDetector();
+
+  /// Thông báo ngắn (ví dụ "Tự nhận CHARGE") cho giao diện hiển thị.
+  final ValueNotifier<String?> notice = ValueNotifier<String?>(null);
+
+  /// Trạng thái nút (0/1, giống buttonStates của Artisan) và nút bấm gần nhất.
+  List<int> buttonStates = [];
+  int lastButton = -1;
 
   bool get hasData => profile.timex.isNotEmpty;
 
@@ -103,6 +114,9 @@ class RoastController extends ChangeNotifier {
       return false;
     }
     _device = dev;
+    autoEvents.reset();
+    buttonStates = List<int>.filled(settings.buttons.length, 0);
+    lastButton = -1;
     profile = RoastProfile(samplingInterval: settings.samplingInterval)..hasCT = settings.ct.enabled;
     currentFile = null;
     rorBT = [];
@@ -158,8 +172,32 @@ class RoastController extends ChangeNotifier {
     curET = r.et;
     curCT = r.ct;
     lastError = r.error;
+    _autoDetect();
     _recomputeRoR();
     notifyListeners();
+  }
+
+  AutoEventParams get _autoParams => AutoEventParams(
+        autoCharge: settings.autoCharge,
+        autoTP: settings.autoTP,
+        autoDryEnd: settings.autoDryEnd,
+        dryEndTemp: settings.dryEndTemp,
+        autoFcStart: settings.autoFcStart,
+        fcStartTemp: settings.fcStartTemp,
+        autoDrop: settings.autoDrop,
+      );
+
+  void _autoDetect() {
+    final found = autoEvents.check(profile, _autoParams);
+    if (found.isEmpty) return;
+    dirty = true;
+    final p = profile;
+    final msg = found.map((f) {
+      final (e, idx) = f;
+      final t = e == RoastEvent.charge ? '' : ' ${fmtTime(p.rel(idx))}';
+      return '${e.label}$t ${p.bt[idx].toStringAsFixed(1)}°C';
+    }).join(' • ');
+    notice.value = 'Tự nhận: $msg';
   }
 
   Future<void> turnOff() async {
@@ -237,7 +275,6 @@ class RoastController extends ChangeNotifier {
     final err = _checkOrder(e, idx);
     if (err != null) return err;
     profile.setEvent(e, idx);
-    _device?.onRoastEvent(e);
     if (e == RoastEvent.charge) _recomputeRoR();
     dirty = true;
     notifyListeners();
@@ -253,7 +290,11 @@ class RoastController extends ChangeNotifier {
       }
     }
     profile.setEvent(e, null);
-    if (e == RoastEvent.charge) _recomputeRoR();
+    if (e == RoastEvent.charge) {
+      autoEvents.chargeDisabled = true; // không tự nhận lại sau khi người dùng bỏ
+      _recomputeRoR();
+    }
+    if (e == RoastEvent.drop) autoEvents.dropDisabled = true;
     dirty = true;
     notifyListeners();
     return null;
@@ -269,16 +310,7 @@ class RoastController extends ChangeNotifier {
   /// Gửi giá trị điều khiển xuống máy rang và ghi thành sự kiện (special event).
   Future<void> commitControl(int i, double v) async {
     controlValues[i] = v;
-    if (_on && profile.timex.isNotEmpty) {
-      final idx = profile.timex.length - 1;
-      final same = profile.events.where((x) => x.index == idx && x.type == i).toList();
-      if (same.isNotEmpty) {
-        same.first.value = v;
-      } else {
-        profile.events.add(SpecialEvent(index: idx, type: i, value: v));
-      }
-      dirty = true;
-    }
+    _recordControlEvent(i, v);
     notifyListeners();
     final dev = _device;
     if (dev == null) return;
@@ -287,6 +319,55 @@ class RoastController extends ChangeNotifier {
     } catch (e) {
       lastError = 'Lỗi ghi ${settings.controls[i].label}: $e';
       notifyListeners();
+    }
+  }
+
+  void _recordControlEvent(int type, double v) {
+    if (!_on || profile.timex.isEmpty) return;
+    final idx = profile.timex.length - 1;
+    final same = profile.events.where((x) => x.index == idx && x.type == type).toList();
+    if (same.isNotEmpty) {
+      same.first.value = v;
+    } else {
+      profile.events.add(SpecialEvent(index: idx, type: type, value: v));
+    }
+    dirty = true;
+  }
+
+  /// Bấm nút sự kiện tuỳ chỉnh – xử lý giống recordextraevent() của Artisan.
+  /// Trả về thông báo lỗi hoặc null.
+  Future<String?> pressButton(int i) async {
+    if (i < 0 || i >= settings.buttons.length) return null;
+    final dev = _device;
+    if (!_on || dev == null) return 'Bấm ON để kết nối máy rang trước';
+    final b = settings.buttons[i];
+    if (buttonStates.length != settings.buttons.length) {
+      buttonStates = List<int>.filled(settings.buttons.length, 0);
+    }
+    buttonStates[i] = buttonStates[i] == 0 ? 1 : 0;
+    lastButton = i;
+    notifyListeners();
+    try {
+      if (b.type == ButtonType.none) {
+        await dev.runCommand(b.command, value: b.value, buttonState: buttonStates[i]);
+        return null;
+      }
+      // Loại Air/Drum/Damper/Burner (tuyệt đối) hoặc ±Air... (tương đối)
+      final etype = b.type >= ButtonType.relAir ? b.type - ButtonType.relAir : b.type;
+      if (etype < 0 || etype > 3) return null;
+      final c = settings.controls[etype];
+      var nv = b.type >= ButtonType.relAir ? controlValues[etype] + b.value : b.value.toDouble();
+      nv = nv.clamp(c.min.toDouble(), c.max.toDouble()).toDouble();
+      controlValues[etype] = nv;
+      _recordControlEvent(etype, nv);
+      notifyListeners();
+      await dev.runCommand(b.command, value: c.toRegister(nv), buttonState: buttonStates[i]);
+      dev.controlValueChanged(etype, nv);
+      return null;
+    } catch (e) {
+      lastError = 'Nút ${b.label}: $e';
+      notifyListeners();
+      return lastError;
     }
   }
 
@@ -365,6 +446,7 @@ class RoastController extends ChangeNotifier {
     _clockTimer?.cancel();
     _device?.close();
     clock.dispose();
+    notice.dispose();
     super.dispose();
   }
 }

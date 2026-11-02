@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../logic/roast_controller.dart';
+import '../modbus/modbus_command.dart';
 import '../services/roaster_device.dart';
 import '../services/settings.dart';
 import 'artisan_colors.dart';
+import 'button_editor.dart';
 
 /// Cài đặt: kết nối Modbus TCP, kênh nhiệt độ, điều khiển, đồ thị.
 class SettingsScreen extends StatefulWidget {
@@ -157,29 +159,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _field('Lớn nhất', '${cc.max}', (v) => cc.max = _int(v) ?? cc.max),
                 _field('Bước', '${cc.step}', (v) => cc.step = _int(v) ?? cc.step),
               ]),
-              SwitchListTile(
-                dense: true,
-                title: const Text('Gửi lệnh Modbus khi thay đổi'),
-                value: cc.modbusEnabled,
-                onChanged: (v) => setState(() => cc.modbusEnabled = v),
+              _row([
+                _field('Lệnh Modbus (Modbus Command)', cc.command, (v) => cc.command = v.trim(),
+                    number: false, helper: 'Ví dụ: write([3,0,{}])  –  để trống nếu không gửi lệnh'),
+              ]),
+              _row([
+                _field('Factor (hệ số nhân)', _num(cc.factor), (v) => cc.factor = _dbl(v) ?? cc.factor, decimal: true),
+                _field('Offset (cộng thêm)', _num(cc.offset), (v) => cc.offset = _dbl(v) ?? cc.offset, decimal: true),
+              ]),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Text('{} trong lệnh = giá trị thanh trượt × Factor + Offset (giống Artisan)',
+                    style: TextStyle(fontSize: 12, color: Colors.black54)),
               ),
-              if (cc.modbusEnabled) ...[
-                _row([
-                  _field('Slave ID', '${cc.slaveId}', (v) => cc.slaveId = _int(v) ?? cc.slaveId),
-                  _field('Thanh ghi', '${cc.address}', (v) => cc.address = _int(v) ?? cc.address),
-                  _dropdown<bool>('Mã hàm ghi', cc.useFc16, const {false: '6 – Single', true: '16 – Multiple'},
-                      (v) => cc.useFc16 = v),
-                ]),
-                _row([
-                  _field('Hệ số nhân', _num(cc.factor), (v) => cc.factor = _dbl(v) ?? cc.factor, decimal: true),
-                  _field('Cộng thêm', _num(cc.offset), (v) => cc.offset = _dbl(v) ?? cc.offset, decimal: true),
-                ]),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: Text('Giá trị ghi vào thanh ghi = giá trị thanh trượt × hệ số + cộng thêm',
-                      style: TextStyle(fontSize: 12, color: Colors.black54)),
-                ),
-              ],
             ],
           ],
         ),
@@ -200,8 +192,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     for (final cc in s.controls) {
       if (cc.max <= cc.min) return '${cc.label}: "Lớn nhất" phải lớn hơn "Nhỏ nhất"';
       if (cc.step < 1) return '${cc.label}: "Bước" phải ≥ 1';
-      if (cc.slaveId < 0 || cc.slaveId > 255) return '${cc.label}: Slave ID phải từ 0 đến 255';
+      final e = cc.command.isEmpty ? null : ModbusCommandRunner.validate(cc.command);
+      if (e != null) return '${cc.label}: $e';
     }
+    for (final b in s.buttons) {
+      final e = b.command.isEmpty ? null : ModbusCommandRunner.validate(b.command);
+      if (e != null) return 'Nút ${b.label}: $e';
+    }
+    if (s.fcStartTemp <= s.dryEndTemp) return 'Nhiệt độ FC START phải lớn hơn DRY END';
     if (s.tempMax <= s.tempMin + 10) return 'Trục nhiệt độ: Max phải lớn hơn Min';
     if (s.rorMax <= s.rorMin) return 'Trục RoR: Max phải lớn hơn Min';
     if (s.rorSpan < 1 || s.rorSpan > 60) return 'Khoảng tính RoR phải từ 1 đến 60 giây';
@@ -300,12 +298,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
               label: const Text('Kiểm tra kết nối & đọc thử nhiệt độ'),
             ),
           ),
+          SwitchListTile(
+            title: const Text('little-endian words'),
+            subtitle: const Text('Thứ tự 2 thanh ghi cho kiểu 32 bit (giống Artisan). Không ảnh hưởng uInt16.'),
+            value: s.littleEndianWords,
+            onChanged: (v) => setState(() => s.littleEndianWords = v),
+          ),
           _section('Kênh nhiệt độ (Modbus)', icon: Icons.thermostat),
-          _channel('BT – Nhiệt độ hạt', 'Bean Temperature (Artisan: temp2)', s.bt),
-          _channel('ET – Nhiệt độ môi trường', 'Environment Temperature (Artisan: temp1)', s.et),
-          _channel('CT – Nhiệt độ buồng đốt', 'Lưu vào file .alog dạng thiết bị phụ tên "CT"', s.ct, canDisable: true),
+          _channel('BT – Nhiệt độ hạt', 'Artisan: Modbus Input 2 (mặc định slave 2, thanh ghi 0)', s.bt),
+          _channel('ET – Nhiệt độ môi trường', 'Artisan: Modbus Input 1 (mặc định slave 1, thanh ghi 0)', s.et),
+          _channel('CT – Nhiệt độ buồng đốt', 'Mặc định slave 5, thanh ghi 0 (Artisan Input 6) – lưu vào .alog tên "CT"', s.ct, canDisable: true),
           _section('Điều khiển máy rang (ghi Modbus)', icon: Icons.tune),
           for (final i in [3, 0, 1, 2]) _control(i),
+          _section('Nút sự kiện (Buttons)', icon: Icons.smart_button),
+          ButtonsSettingsSection(buttons: s.buttons),
+          _section('Tự động đánh dấu sự kiện', icon: Icons.auto_awesome),
+          SwitchListTile(
+            title: const Text('Tự nhận CHARGE (đổ hạt)'),
+            subtitle: const Text('BT giảm đột ngột khi BT > 77°C – giống Auto CHARGE của Artisan'),
+            value: s.autoCharge,
+            onChanged: (v) => setState(() => s.autoCharge = v),
+          ),
+          SwitchListTile(
+            title: const Text('Tự nhận TP (điểm đáy)'),
+            subtitle: const Text('Sau CHARGE, khi BT ngừng giảm và tăng trở lại'),
+            value: s.autoTP,
+            onChanged: (v) => setState(() => s.autoTP = v),
+          ),
+          SwitchListTile(
+            title: const Text('Tự nhận DRY END'),
+            value: s.autoDryEnd,
+            onChanged: (v) => setState(() => s.autoDryEnd = v),
+          ),
+          _row([
+            _field('DRY END khi BT đạt', _num(s.dryEndTemp), (v) => s.dryEndTemp = _dbl(v) ?? s.dryEndTemp,
+                decimal: true, suffix: '°C'),
+            _field('FC START khi BT đạt', _num(s.fcStartTemp), (v) => s.fcStartTemp = _dbl(v) ?? s.fcStartTemp,
+                decimal: true, suffix: '°C'),
+          ]),
+          SwitchListTile(
+            title: const Text('Tự nhận FC START'),
+            value: s.autoFcStart,
+            onChanged: (v) => setState(() => s.autoFcStart = v),
+          ),
+          SwitchListTile(
+            title: const Text('Tự nhận DROP (xả hạt)'),
+            subtitle: const Text('BT giảm đột ngột, sau CHARGE ≥ 7 phút và BT > 160°C – giống Auto DROP của Artisan'),
+            value: s.autoDrop,
+            onChanged: (v) => setState(() => s.autoDrop = v),
+          ),
           _section('Đồ thị', icon: Icons.show_chart),
           _row([
             _field('Nhiệt độ min', _num(s.tempMin), (v) => s.tempMin = _dbl(v) ?? s.tempMin, suffix: '°C'),

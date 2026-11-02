@@ -9,10 +9,10 @@ Giao diện mô phỏng theo Artisan. File lưu ra là `.alog`, **mở được 
 |---|-----------|---------|
 | 1 | Đọc **BT**, **ET**, **CT** mỗi 1–3 giây | Modbus TCP, FC3/FC4, kiểu INT16/UINT16/INT32/FLOAT32, hệ số chia, hiệu chỉnh |
 | 2 | Đồ thị nhiệt độ + **ΔBT / ΔET (RoR, °C/phút)** | RoR tính bằng hồi quy tuyến tính trên 20 giây (giống mặc định của Artisan), có làm mượt |
-| 3 | Nút sự kiện **CHARGE, TP, DRY END, FC START, DROP** | Nhấn để đánh dấu, **nhấn giữ** để bỏ. TP tự tìm nếu không bấm |
+| 3 | **Tự nhận** CHARGE, TP, DRY END, FC START, DROP | Theo đúng thuật toán Artisan (Auto CHARGE/DROP, TP). DRY END = 150°C, FC START = 198°C (sửa trong Cài đặt). Sửa tay: Menu → Sự kiện |
 | 4 | Lưu mẻ rang, **lịch sử**, mở xem lại | Lưu `.alog` trong bộ nhớ app; tìm kiếm; nhập / xuất file |
 | 5 | **Profile nền** (background) để rang theo | Căn theo CHARGE; có sẵn 1 profile mẫu |
-| 6 | **Điều khiển gas, quạt, trống, van gió** | Thanh trượt → ghi thanh ghi Modbus (FC6/FC16), lưu thành sự kiện trong `.alog` |
+| 6 | **Điều khiển gas, quạt, trống** + **nút tuỳ chỉnh** | Thanh trượt và nút dùng **lệnh Modbus Command giống Artisan**: `write([3,0,{}])`, `writem(3,1,{})`, `wcoil`… Nút loại ±Air/±Burner cộng/trừ giá trị |
 | + | Chế độ **mô phỏng** | Chạy thử khi chưa nối máy rang (gas tăng thì nhiệt độ tăng) |
 
 ## 1. Cài môi trường (làm 1 lần, trên Windows)

@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import '../models/roast_profile.dart';
+import '../modbus/modbus_command.dart';
 import '../modbus/modbus_tcp.dart';
 import 'settings.dart';
 
@@ -18,11 +18,16 @@ abstract class RoasterDevice {
   Future<void> connect();
   Future<Reading> read();
 
-  /// Ghi giá trị điều khiển [index] (0 Air, 1 Drum, 2 Damper, 3 Burner).
+  /// Thanh trượt [index] (0 Air, 1 Drum, 2 Damper, 3 Burner) đổi sang [value]:
+  /// chạy lệnh Modbus của thanh trượt với {} = value × factor + offset.
   Future<void> writeControl(int index, double value);
 
-  /// Báo cho thiết bị biết một sự kiện rang (dùng cho chế độ mô phỏng).
-  void onRoastEvent(RoastEvent e) {}
+  /// Chạy một chuỗi lệnh Modbus Command (của nút sự kiện).
+  Future<void> runCommand(String command, {num? value, int buttonState = 0});
+
+  /// Thông báo giá trị điều khiển mới (do nút ± thay đổi) – dùng cho mô phỏng.
+  void controlValueChanged(int index, double value) {}
+
   Future<void> close();
 }
 
@@ -33,10 +38,13 @@ class ModbusRoasterDevice extends RoasterDevice {
           host: settings.host,
           port: settings.port,
           timeout: Duration(milliseconds: settings.timeoutMs),
-        );
+        ) {
+    runner = ModbusCommandRunner(client, littleEndianWords: settings.littleEndianWords);
+  }
 
   final AppSettings settings;
   final ModbusTcpClient client;
+  late final ModbusCommandRunner runner;
 
   @override
   String get description => 'Modbus TCP ${settings.host}:${settings.port}';
@@ -48,7 +56,8 @@ class ModbusRoasterDevice extends RoasterDevice {
     if (!c.enabled) return null;
     final count = ModbusTcpClient.registerCount(c.dataType);
     final regs = await client.readRegisters(c.slaveId, c.functionCode, c.address, count);
-    final raw = ModbusTcpClient.decode(regs, c.dataType);
+    final ordered = (count == 2 && settings.littleEndianWords) ? [regs[1], regs[0]] : regs;
+    final raw = ModbusTcpClient.decode(ordered, c.dataType);
     final div = c.divider == 0 ? 1.0 : c.divider;
     return raw / div + c.offset;
   }
@@ -65,8 +74,8 @@ class ModbusRoasterDevice extends RoasterDevice {
       }
     }
 
-    final bt = await safe(settings.bt);
     final et = await safe(settings.et);
+    final bt = await safe(settings.bt);
     final ct = await safe(settings.ct);
     return Reading(bt: bt, et: et, ct: ct, error: err);
   }
@@ -74,13 +83,14 @@ class ModbusRoasterDevice extends RoasterDevice {
   @override
   Future<void> writeControl(int index, double value) async {
     final c = settings.controls[index];
-    if (!c.modbusEnabled) return;
-    final reg = c.toRegister(value);
-    if (c.useFc16) {
-      await client.writeMultipleRegisters(c.slaveId, c.address, [reg]);
-    } else {
-      await client.writeSingleRegister(c.slaveId, c.address, reg);
-    }
+    if (c.command.trim().isEmpty) return;
+    await runner.run(c.command, value: c.toRegister(value));
+  }
+
+  @override
+  Future<void> runCommand(String command, {num? value, int buttonState = 0}) async {
+    if (command.trim().isEmpty) return;
+    await runner.run(command, value: value, buttonState: buttonState);
   }
 
   @override
@@ -88,11 +98,13 @@ class ModbusRoasterDevice extends RoasterDevice {
 }
 
 /// Máy rang mô phỏng – để chạy thử app khi chưa nối máy thật.
-/// Gas (Burner) càng lớn thì buồng đốt (CT) và gió nóng (ET) càng nóng.
+/// Tự "đổ hạt" sau 60 giây và tự "xả hạt" khi hạt đạt ~210°C, để thử chức năng
+/// tự nhận diện CHARGE / TP / DRY END / FC START / DROP.
 class SimulatedRoasterDevice extends RoasterDevice {
   SimulatedRoasterDevice();
 
   final _rnd = math.Random();
+  DateTime? _start;
   DateTime? _last;
   double _ct = 300;
   double _et = 220;
@@ -100,14 +112,15 @@ class SimulatedRoasterDevice extends RoasterDevice {
   double _probe = 190; // đầu dò BT (có độ trễ)
   bool _charged = false;
   bool _dropped = false;
-  final List<double> _controls = [40, 50, 0, 60];
+  final List<double> _controls = [40, 50, 0, 70];
 
   @override
   String get description => 'Mô phỏng';
 
   @override
   Future<void> connect() async {
-    _last = DateTime.now();
+    _start = DateTime.now();
+    _last = _start;
   }
 
   void _step(double dt) {
@@ -124,6 +137,8 @@ class SimulatedRoasterDevice extends RoasterDevice {
       _bean += (_et - _bean) * math.min(1.0, dt / 250.0);
       if (_bean > 195) _bean += 0.02 * dt; // phản ứng toả nhiệt (crack)
       _probe += (_bean - _probe) * math.min(1.0, dt / 35.0);
+    } else if (_dropped) {
+      _probe += (_et * 0.55 - _probe) * math.min(1.0, dt / 12.0); // lồng rỗng – đầu dò nguội nhanh
     } else {
       _probe += (_et * 0.92 - _probe) * math.min(1.0, dt / 60.0);
     }
@@ -134,7 +149,14 @@ class SimulatedRoasterDevice extends RoasterDevice {
     final now = DateTime.now();
     final dt = _last == null ? 1.0 : now.difference(_last!).inMilliseconds / 1000.0;
     _last = now;
-    // chia nhỏ bước để mô hình ổn định
+    final elapsed = _start == null ? 0 : now.difference(_start!).inSeconds;
+    if (!_charged && elapsed >= 60) {
+      _charged = true; // tự đổ hạt
+      _bean = 25;
+    }
+    if (_charged && !_dropped && _bean >= 210) {
+      _dropped = true; // tự xả hạt
+    }
     var remain = dt.clamp(0.0, 10.0).toDouble();
     while (remain > 0) {
       final h = math.min(0.25, remain);
@@ -147,18 +169,18 @@ class SimulatedRoasterDevice extends RoasterDevice {
 
   @override
   Future<void> writeControl(int index, double value) async {
+    controlValueChanged(index, value);
+  }
+
+  @override
+  void controlValueChanged(int index, double value) {
     if (index >= 0 && index < _controls.length) _controls[index] = value;
   }
 
   @override
-  void onRoastEvent(RoastEvent e) {
-    if (e == RoastEvent.charge) {
-      _charged = true;
-      _dropped = false;
-      _bean = 25;
-    } else if (e == RoastEvent.drop) {
-      _dropped = true;
-    }
+  Future<void> runCommand(String command, {num? value, int buttonState = 0}) async {
+    final err = ModbusCommandRunner.validate(command);
+    if (err != null) throw ModbusException(err);
   }
 
   @override
