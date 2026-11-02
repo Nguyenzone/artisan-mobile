@@ -1,0 +1,67 @@
+# Build file cài đặt Android (APK) trên máy chủ GitHub – không cần cài Flutter trên máy tính.
+# Chạy tự động mỗi khi tải code lên nhánh main, hoặc bấm tay ở tab Actions > Build APK > Run workflow.
+name: Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Tạo thư mục android/ và thêm quyền mạng
+        run: |
+          flutter --version
+          flutter create --platforms=android --org com.minhdang --project-name artisan_mobile .
+          python3 - <<'PY'
+          import re
+          p = 'android/app/src/main/AndroidManifest.xml'
+          s = open(p, encoding='utf-8').read()
+          if 'android.permission.INTERNET' not in s:
+              s = re.sub(r'(<manifest[^>]*>)', r'\1\n    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>', s, count=1)
+          s = s.replace('android:label="artisan_mobile"', 'android:label="Artisan Mobile"')
+          open(p, 'w', encoding='utf-8').write(s)
+          PY
+
+      - run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - name: Kiểm thử
+        run: flutter test
+        continue-on-error: true
+
+      - name: Lưu APK (tab Actions > Artifacts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: artisan-mobile-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Đổi tên APK
+        run: cp build/app/outputs/flutter-apk/app-release.apk ArtisanMobile-${{ github.run_number }}.apk
+
+      - name: Đăng APK lên mục Releases (tải thẳng trên điện thoại)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.run_number }}
+          name: Artisan Mobile – bản build ${{ github.run_number }}
+          body: Mở link này trên điện thoại Android và bấm vào file .apk để tải và cài đặt.
+          files: ArtisanMobile-${{ github.run_number }}.apk
