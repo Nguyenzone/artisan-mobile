@@ -179,7 +179,6 @@ class AppSettings {
   static const int currentVersion = 2;
 
   // Kết nối
-  bool simulator = true;
   String host = '10.10.100.254';
   int port = 502;
   int timeoutMs = 1000;
@@ -206,6 +205,17 @@ class AppSettings {
   double fcStartTemp = 198;
   bool autoDrop = true;
 
+  // Rang tự động: PID bám BT của profile nền (Artisan: PID > Background Follow)
+  double pidKp = 15.0;
+  double pidKi = 0.01;
+  double pidKd = 20.0;
+  int pidLookahead = 0; // giây – Artisan "Lookahead"
+  int pidTarget = 3; // thanh trượt nhận đầu ra PID: 0 Air, 1 Drum, 2 Damper, 3 Burner
+  int pidDutyMin = 0; // %
+  int pidDutyMax = 100; // %
+  int pidDutySteps = 1;
+  bool pidStopAtDrop = true;
+
   // Đồ thị
   double tempMin = 0;
   double tempMax = 275;
@@ -215,7 +225,6 @@ class AppSettings {
   int rorSmoothing = 3;
   int timeMaxMinutes = 15;
   bool showCT = true;
-  bool showDeltaET = true;
   bool showDeltaBT = true;
   bool showBackground = true;
   bool showEventSteps = true;
@@ -251,7 +260,6 @@ class AppSettings {
 
   Map<String, dynamic> toJson() => {
         'version': currentVersion,
-        'simulator': simulator,
         'host': host,
         'port': port,
         'timeoutMs': timeoutMs,
@@ -269,6 +277,15 @@ class AppSettings {
         'autoFcStart': autoFcStart,
         'fcStartTemp': fcStartTemp,
         'autoDrop': autoDrop,
+        'pidKp': pidKp,
+        'pidKi': pidKi,
+        'pidKd': pidKd,
+        'pidLookahead': pidLookahead,
+        'pidTarget': pidTarget,
+        'pidDutyMin': pidDutyMin,
+        'pidDutyMax': pidDutyMax,
+        'pidDutySteps': pidDutySteps,
+        'pidStopAtDrop': pidStopAtDrop,
         'tempMin': tempMin,
         'tempMax': tempMax,
         'rorMin': rorMin,
@@ -277,7 +294,6 @@ class AppSettings {
         'rorSmoothing': rorSmoothing,
         'timeMaxMinutes': timeMaxMinutes,
         'showCT': showCT,
-        'showDeltaET': showDeltaET,
         'showDeltaBT': showDeltaBT,
         'showBackground': showBackground,
         'showEventSteps': showEventSteps,
@@ -294,7 +310,6 @@ class AppSettings {
     }
 
     final version = g<num>('version')?.toInt() ?? 1;
-    s.simulator = g<bool>('simulator') ?? s.simulator;
     // Phiên bản 1 dùng địa chỉ mẫu – chuyển sang cấu hình máy rang thật (theo Artisan)
     if (version >= 2) {
       s.host = g<String>('host') ?? s.host;
@@ -331,6 +346,15 @@ class AppSettings {
     s.autoFcStart = g<bool>('autoFcStart') ?? s.autoFcStart;
     s.fcStartTemp = g<num>('fcStartTemp')?.toDouble() ?? s.fcStartTemp;
     s.autoDrop = g<bool>('autoDrop') ?? s.autoDrop;
+    s.pidKp = g<num>('pidKp')?.toDouble() ?? s.pidKp;
+    s.pidKi = g<num>('pidKi')?.toDouble() ?? s.pidKi;
+    s.pidKd = g<num>('pidKd')?.toDouble() ?? s.pidKd;
+    s.pidLookahead = g<num>('pidLookahead')?.toInt() ?? s.pidLookahead;
+    s.pidTarget = g<num>('pidTarget')?.toInt() ?? s.pidTarget;
+    s.pidDutyMin = g<num>('pidDutyMin')?.toInt() ?? s.pidDutyMin;
+    s.pidDutyMax = g<num>('pidDutyMax')?.toInt() ?? s.pidDutyMax;
+    s.pidDutySteps = g<num>('pidDutySteps')?.toInt() ?? s.pidDutySteps;
+    s.pidStopAtDrop = g<bool>('pidStopAtDrop') ?? s.pidStopAtDrop;
     s.tempMin = g<num>('tempMin')?.toDouble() ?? s.tempMin;
     s.tempMax = g<num>('tempMax')?.toDouble() ?? s.tempMax;
     s.rorMin = g<num>('rorMin')?.toDouble() ?? s.rorMin;
@@ -339,7 +363,6 @@ class AppSettings {
     s.rorSmoothing = g<num>('rorSmoothing')?.toInt() ?? s.rorSmoothing;
     s.timeMaxMinutes = g<num>('timeMaxMinutes')?.toInt() ?? s.timeMaxMinutes;
     s.showCT = g<bool>('showCT') ?? s.showCT;
-    s.showDeltaET = g<bool>('showDeltaET') ?? s.showDeltaET;
     s.showDeltaBT = g<bool>('showDeltaBT') ?? s.showDeltaBT;
     s.showBackground = g<bool>('showBackground') ?? s.showBackground;
     s.showEventSteps = g<bool>('showEventSteps') ?? s.showEventSteps;

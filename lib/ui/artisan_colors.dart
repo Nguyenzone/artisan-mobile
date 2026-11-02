@@ -49,5 +49,7 @@ class AC {
   static const buttonOn = Color(0xFFCC0F50);
   static const buttonOff = Color(0xFF3979AE);
   static const buttonReset = Color(0xFF4C97C3);
+  static const buttonControl = Color(0xFF1F9BC9);
+  static const lcdSvBg = Color(0xFF2E7D32);
   static const window = Color(0xFFECECEC);
 }

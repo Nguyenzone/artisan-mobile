@@ -172,10 +172,7 @@ class _RoastChartPainter extends CustomPainter {
     // ---------- ET, BT
     _series(canvas, p.timex, n, t0, (i) => p.et[i] < 0 ? null : p.et[i], yT, _line(AC.et, 2.0));
     _series(canvas, p.timex, n, t0, (i) => p.bt[i] < 0 ? null : p.bt[i], yT, _line(AC.bt, 2.4));
-    // ---------- ΔET, ΔBT (trục phải)
-    if (s.showDeltaET && w.rorET.length == n) {
-      _series(canvas, p.timex, n, t0, (i) => w.rorET[i], yR, _line(AC.deltaEt, 1.0), start: rorStart);
-    }
+    // ---------- ΔBT (trục phải)
     if (s.showDeltaBT && w.rorBT.length == n) {
       _series(canvas, p.timex, n, t0, (i) => w.rorBT[i], yR, _line(AC.deltaBt, 1.4), start: rorStart);
     }
@@ -352,7 +349,6 @@ class _RoastChartPainter extends CustomPainter {
     final items = <MapEntry<String, Color>>[
       const MapEntry('ET', AC.et),
       const MapEntry('BT', AC.bt),
-      if (w.settings.showDeltaET) const MapEntry('ΔET', AC.deltaEt),
       if (w.settings.showDeltaBT) const MapEntry('ΔBT', AC.deltaBt),
       if (w.settings.showCT && p.hasCT) const MapEntry('CT', AC.ct),
     ];

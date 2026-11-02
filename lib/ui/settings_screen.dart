@@ -183,7 +183,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   String? _validate() {
     if (s.port < 1 || s.port > 65535) return 'Cổng (port) không hợp lệ';
-    if (!s.simulator && s.host.trim().isEmpty) return 'Chưa nhập địa chỉ IP';
+    if (s.host.trim().isEmpty) return 'Chưa nhập địa chỉ IP';
     for (final ch in [s.bt, s.et, s.ct]) {
       if (ch.divider == 0) return 'Hệ số "Chia cho" không được bằng 0';
       if (ch.address < 0 || ch.address > 65535) return 'Địa chỉ thanh ghi không hợp lệ';
@@ -199,6 +199,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final e = b.command.isEmpty ? null : ModbusCommandRunner.validate(b.command);
       if (e != null) return 'Nút ${b.label}: $e';
     }
+    if (s.pidDutyMin < 0 || s.pidDutyMax > 100 || s.pidDutyMin >= s.pidDutyMax) {
+      return 'Duty min/max phải trong 0–100 và min < max';
+    }
+    if (s.pidKp < 0 || s.pidKi < 0 || s.pidKd < 0) return 'Kp, Ki, Kd không được âm';
     if (s.fcStartTemp <= s.dryEndTemp) return 'Nhiệt độ FC START phải lớn hơn DRY END';
     if (s.tempMax <= s.tempMin + 10) return 'Trục nhiệt độ: Max phải lớn hơn Min';
     if (s.rorMax <= s.rorMin) return 'Trục RoR: Max phải lớn hơn Min';
@@ -273,12 +277,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: const Text('Đang rang (ON). Thay đổi kết nối / kênh đọc sẽ có hiệu lực từ lần bấm ON tiếp theo.'),
             ),
           _section('Kết nối', icon: Icons.wifi),
-          SwitchListTile(
-            title: const Text('Chế độ mô phỏng'),
-            subtitle: const Text('Chạy thử không cần máy rang (gas càng cao nhiệt càng tăng)'),
-            value: s.simulator,
-            onChanged: (v) => setState(() => s.simulator = v),
-          ),
           _row([
             _field('Địa chỉ IP thiết bị Modbus TCP', s.host, (v) => s.host = v, number: false),
           ]),
@@ -347,6 +345,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: s.autoDrop,
             onChanged: (v) => setState(() => s.autoDrop = v),
           ),
+          _section('Rang tự động theo profile nền (PID)', icon: Icons.precision_manufacturing),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Giống Artisan: Control > PID > Mode "Background Follow", nguồn BT. App tự chỉnh thanh trượt '
+              'để BT bám đường BT của profile nền. Bấm nút AUTO trên màn hình rang để bật/tắt.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+          ),
+          _row([
+            _dropdown<int>('Điều khiển thanh trượt', s.pidTarget,
+                {for (var i = 0; i < 4; i++) i: '${s.controls[i].label} (${AppSettings.etypeNames[i]})'},
+                (v) => s.pidTarget = v),
+            _field('Lookahead', '${s.pidLookahead}', (v) => s.pidLookahead = _int(v) ?? s.pidLookahead,
+                suffix: 'giây', helper: 'Nhìn trước đường nền'),
+          ]),
+          _row([
+            _field('Kp', _num(s.pidKp), (v) => s.pidKp = _dbl(v) ?? s.pidKp, decimal: true),
+            _field('Ki', _num(s.pidKi), (v) => s.pidKi = _dbl(v) ?? s.pidKi, decimal: true),
+            _field('Kd', _num(s.pidKd), (v) => s.pidKd = _dbl(v) ?? s.pidKd, decimal: true),
+          ]),
+          _row([
+            _field('Duty min', '${s.pidDutyMin}', (v) => s.pidDutyMin = _int(v) ?? s.pidDutyMin, suffix: '%'),
+            _field('Duty max', '${s.pidDutyMax}', (v) => s.pidDutyMax = _int(v) ?? s.pidDutyMax, suffix: '%'),
+            _field('Duty steps', '${s.pidDutySteps}', (v) => s.pidDutySteps = _int(v) ?? s.pidDutySteps),
+          ]),
+          SwitchListTile(
+            title: const Text('Tự tắt rang tự động khi DROP'),
+            value: s.pidStopAtDrop,
+            onChanged: (v) => setState(() => s.pidStopAtDrop = v),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: TextButton(
+              onPressed: () => setState(() {
+                s.pidKp = 15;
+                s.pidKi = 0.01;
+                s.pidKd = 20;
+              }),
+              child: const Text('Đặt lại Kp/Ki/Kd mặc định của Artisan (15 / 0.01 / 20)'),
+            ),
+          ),
           _section('Đồ thị', icon: Icons.show_chart),
           _row([
             _field('Nhiệt độ min', _num(s.tempMin), (v) => s.tempMin = _dbl(v) ?? s.tempMin, suffix: '°C'),
@@ -366,8 +406,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ]),
           SwitchListTile(
               title: const Text('Hiện đường CT'), value: s.showCT, onChanged: (v) => setState(() => s.showCT = v)),
-          SwitchListTile(
-              title: const Text('Hiện ΔET'), value: s.showDeltaET, onChanged: (v) => setState(() => s.showDeltaET = v)),
           SwitchListTile(
               title: const Text('Hiện ΔBT'), value: s.showDeltaBT, onChanged: (v) => setState(() => s.showDeltaBT = v)),
           SwitchListTile(

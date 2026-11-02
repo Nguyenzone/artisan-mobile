@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../logic/roast_controller.dart';
 import '../models/roast_profile.dart';
+import '../services/settings.dart';
 import 'artisan_colors.dart';
 import 'history_screen.dart';
 import 'roast_chart.dart';
@@ -125,6 +126,27 @@ class _RoastScreenState extends State<RoastScreen> {
     if (n != null && mounted) _msg(n);
   }
 
+  Future<void> _autoPressed() async {
+    if (!c.autoRoast) {
+      final err = c.canAutoRoast();
+      if (err != null) {
+        _msg(err, error: true);
+        return;
+      }
+      final bg = c.background!;
+      final ok = await _confirm(
+          'Rang tự động',
+          'App sẽ tự điều chỉnh ${c.settings.controls[c.settings.pidTarget].label} để BT bám theo profile nền '
+              '"${bg.title.isNotEmpty ? bg.title : c.backgroundFile}".\n\n'
+              'Trước CHARGE: giữ BT bằng BT lúc CHARGE của nền. Sau CHARGE: bám đường BT nền. '
+              'Bấm AUTO lần nữa để quay về điều khiển tay.',
+          ok: 'Bật');
+      if (!ok) return;
+    }
+    final err = c.toggleAutoRoast();
+    if (err != null) _msg(err, error: true);
+  }
+
   Future<void> _pressButton(int i) async {
     final err = await c.pressButton(i);
     if (err != null && mounted) _msg(err, error: true);
@@ -223,6 +245,11 @@ class _RoastScreenState extends State<RoastScreen> {
       padding: const EdgeInsets.only(left: 8),
       child: Row(
         children: [
+          if (compact) ...[
+            PredictionLcd(label: c.prediction(false).$1, value: c.prediction(false).$2),
+            PredictionLcd(label: c.prediction(true).$1, value: c.prediction(true).$2),
+            const Spacer(),
+          ] else
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -234,18 +261,22 @@ class _RoastScreenState extends State<RoastScreen> {
                     style: const TextStyle(color: AC.title, fontWeight: FontWeight.bold, fontSize: 15)),
                 Text(
                   [
-                    c.settings.simulator ? 'MÔ PHỎNG' : 'Modbus ${c.settings.host}:${c.settings.port}',
+                    'Modbus ${c.settings.host}:${c.settings.port}',
                     if (c.background != null && c.settings.showBackground)
                       'Nền: ${c.background!.title.isNotEmpty ? c.background!.title : c.backgroundFile}',
                     if (c.dirty && c.hasData && !c.isOn) 'chưa lưu',
                   ].join('  •  '),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 10.5, color: c.settings.simulator ? AC.et : Colors.black54),
+                  style: const TextStyle(fontSize: 10.5, color: Colors.black54),
                 ),
               ],
             ),
           ),
+          if (!compact) ...[
+            PredictionLcd(label: c.prediction(false).$1, value: c.prediction(false).$2),
+            PredictionLcd(label: c.prediction(true).$1, value: c.prediction(true).$2),
+          ],
           if (!compact && c.settings.controls.any((x) => x.visible))
             IconButton(
               tooltip: 'Ẩn/hiện điều khiển',
@@ -277,6 +308,11 @@ class _RoastScreenState extends State<RoastScreen> {
               const PopupMenuItem(value: 'settings', child: ListTile(leading: Icon(Icons.settings), title: Text('Cài đặt'))),
             ],
           ),
+          CommandButton(
+              label: c.autoRoast ? 'AUTO ✓' : 'AUTO',
+              color: c.autoRoast ? AC.buttonSelected : AC.buttonControl,
+              onPressed: c.isOn ? _autoPressed : null,
+              width: 68),
           CommandButton(label: 'RESET', color: AC.buttonReset, onPressed: c.isOn ? null : _resetPressed, width: 62),
           c.isOn
               ? CommandButton(label: 'OFF', color: AC.buttonOff, onPressed: _offPressed)
@@ -310,13 +346,14 @@ class _RoastScreenState extends State<RoastScreen> {
     if (btns.isEmpty) return const SizedBox(height: 4);
     Widget one(int i) {
       final b = c.settings.buttons[i];
-      final pressed = i < c.buttonStates.length && c.buttonStates[i] != 0;
+      final toggle = b.type == ButtonType.none;
+      final pressed = toggle && i < c.buttonStates.length && c.buttonStates[i] != 0;
       return ArtisanButton(
         label: b.label,
         color: Color(b.color),
         textColor: Color(b.textColor),
         pressed: pressed,
-        last: c.lastButton == i,
+        last: toggle && c.lastButton == i,
         enabled: c.isOn,
         onTap: () => _pressButton(i),
       );

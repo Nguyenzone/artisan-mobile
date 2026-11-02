@@ -91,7 +91,6 @@ class LcdPanel extends StatelessWidget {
     final et = on ? c.curET : _valueAt(p.et);
     final bt = on ? c.curBT : _valueAt(p.bt);
     final ct = on ? c.curCT : (p.hasCT ? _valueAt(p.ct) : null);
-    final det = on ? c.deltaET : _rorAt(c.rorET);
     final dbt = on ? c.deltaBT : _rorAt(c.rorBT);
 
     final timer = ValueListenableBuilder<double>(
@@ -117,9 +116,9 @@ class LcdPanel extends StatelessWidget {
       timer,
       Lcd(label: 'ET', value: fmtTemp(et), bg: AC.lcdEtBg, fg: Colors.white),
       Lcd(label: 'BT', value: fmtTemp(bt), bg: AC.lcdBtBg, fg: Colors.white),
-      Lcd(label: 'ΔET', value: fmtRoR(det), bg: AC.lcdDeltaBg, fg: AC.deltaEt),
       Lcd(label: 'ΔBT', value: fmtRoR(dbt), bg: AC.lcdDeltaBg, fg: AC.deltaBt),
       if (c.settings.ct.enabled || p.hasCT) Lcd(label: 'CT', value: fmtTemp(ct), bg: AC.lcdCtBg, fg: Colors.white),
+      if (c.autoRoast) Lcd(label: 'SV (BT nền)', value: fmtTemp(c.sv), bg: AC.lcdSvBg, fg: Colors.white),
     ];
 
     if (vertical) {
@@ -377,6 +376,43 @@ class ArtisanButton extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Ô dự đoán »DRY / »FCs kiểu Artisan (phases LCD).
+class PredictionLcd extends StatelessWidget {
+  const PredictionLcd({super.key, required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 64,
+      margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
+      padding: const EdgeInsets.fromLTRB(4, 1, 4, 1),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE6E6E6),
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(color: const Color(0xFFBDBDBD)),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black87)),
+          FittedBox(
+            child: Text(value,
+                style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF262626),
+                    fontFeatures: [ui.FontFeature.tabularFigures()])),
+          ),
+        ],
       ),
     );
   }
