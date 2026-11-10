@@ -29,7 +29,7 @@ flutter:
 # Biểu tượng ứng dụng (tạo bằng: dart run flutter_launcher_icons)
 flutter_launcher_icons:
   android: true
-  ios: true
+  ios: false
   image_path: "assets/icon/app_icon.png"
   adaptive_icon_background: "#12382A"
   adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
