@@ -118,7 +118,8 @@ class LcdPanel extends StatelessWidget {
       Lcd(label: 'BT', value: fmtTemp(bt), bg: AC.lcdBtBg, fg: Colors.white),
       Lcd(label: 'ΔBT', value: fmtRoR(dbt), bg: AC.lcdDeltaBg, fg: AC.deltaBt),
       if (c.settings.ct.enabled || p.hasCT) Lcd(label: 'CT', value: fmtTemp(ct), bg: AC.lcdCtBg, fg: Colors.white),
-      if (c.autoRoast) Lcd(label: 'SV (BT nền)', value: fmtTemp(c.sv), bg: AC.lcdSvBg, fg: Colors.white),
+      if (c.autoRoast && c.replay != null)
+        Lcd(label: 'AUTO – mốc còn lại', value: '${c.replay!.pendingCount}', bg: AC.lcdSvBg, fg: Colors.white),
     ];
 
     if (vertical) {

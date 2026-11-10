@@ -126,6 +126,121 @@ class _RoastScreenState extends State<RoastScreen> {
     if (n != null && mounted) _msg(n);
   }
 
+  Widget _profileAutoButton() {
+    final bg = c.background;
+    final name = bg == null ? 'Chưa chọn' : (bg.title.isNotEmpty ? bg.title : (c.backgroundFile ?? ''));
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
+      child: Material(
+        color: bg == null ? const Color(0xFFE6E6E6) : const Color(0xFF12382A),
+        borderRadius: BorderRadius.circular(5),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(5),
+          onTap: c.autoRoast ? () => _msg('Tắt AUTO trước khi đổi Profile Auto') : _pickProfile,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Profile Auto',
+                    style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: bg == null ? Colors.black87 : const Color(0xFFE8A27C))),
+                Text(name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: bg == null ? Colors.black54 : Colors.white)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickProfile() async {
+    final list = await c.storage.list();
+    if (!mounted) return;
+    String two(int v) => v.toString().padLeft(2, '0');
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AnimatedBuilder(
+        animation: c,
+        builder: (ctx, _) => AlertDialog(
+          title: const Text('Chọn Profile để rang auto'),
+          contentPadding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+          content: SizedBox(
+            width: 520,
+            child: list.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('Chưa có mẻ rang nào được lưu. Hãy rang tay một mẻ ưng ý, lưu lại rồi chọn ở đây.'),
+                  )
+                : ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final s in list.where((x) => x.error == null))
+                        Builder(builder: (_) {
+                          final sel = c.backgroundFile == s.fileName;
+                          return Card(
+                            color: sel ? const Color(0xFF12382A) : null,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              side: BorderSide(
+                                  color: sel ? const Color(0xFFC4561D) : Colors.black12, width: sel ? 3 : 1),
+                            ),
+                            child: ListTile(
+                              leading: Icon(sel ? Icons.check_circle : Icons.radio_button_unchecked,
+                                  color: sel ? const Color(0xFFE8A27C) : Colors.black38),
+                              title: Text(s.title,
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold, color: sel ? Colors.white : Colors.black87)),
+                              subtitle: Text(
+                                [
+                                  '${two(s.date.day)}/${two(s.date.month)}/${s.date.year} ${two(s.date.hour)}:${two(s.date.minute)}',
+                                  if (s.beans.isNotEmpty) s.beans,
+                                  if (s.totalTime != null) 'Tổng ${fmtTime(s.totalTime)}',
+                                  if (s.fcTime != null) 'FC ${fmtTime(s.fcTime)}',
+                                  if (s.dropBT != null) 'DROP ${s.dropBT!.toStringAsFixed(1)}°C',
+                                ].join('  •  '),
+                                style: TextStyle(color: sel ? Colors.white70 : Colors.black54),
+                              ),
+                              trailing: sel
+                                  ? const Text('ĐANG CHỌN',
+                                      style: TextStyle(color: Color(0xFFE8A27C), fontWeight: FontWeight.bold))
+                                  : null,
+                              onTap: () async {
+                                try {
+                                  await c.setBackgroundFile(s.fileName);
+                                  if (!c.settings.showBackground) {
+                                    c.settings.showBackground = true;
+                                    await c.applySettings(c.settings);
+                                  }
+                                } catch (e) {
+                                  _msg('Không mở được: $e', error: true);
+                                }
+                              },
+                            ),
+                          );
+                        }),
+                    ],
+                  ),
+          ),
+          actions: [
+            if (c.background != null)
+              TextButton(onPressed: () => c.setBackgroundFile(null), child: const Text('Bỏ chọn')),
+            FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Xong')),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _autoPressed() async {
     if (!c.autoRoast) {
       final err = c.canAutoRoast();
@@ -136,9 +251,10 @@ class _RoastScreenState extends State<RoastScreen> {
       final bg = c.background!;
       final ok = await _confirm(
           'Rang tự động',
-          'App sẽ tự điều chỉnh ${c.settings.controls[c.settings.pidTarget].label} để BT bám theo profile nền '
-              '"${bg.title.isNotEmpty ? bg.title : c.backgroundFile}".\n\n'
-              'Trước CHARGE: giữ BT bằng BT lúc CHARGE của nền. Sau CHARGE: bám đường BT nền. '
+          'Làm theo Profile Auto "${bg.title.isNotEmpty ? bg.title : c.backgroundFile}":\n\n'
+              '• Lúc CHARGE: Gas / Trống / Quạt đặt về đúng như mẻ mẫu lúc CHARGE.\n'
+              '• Sau đó: mẻ mẫu chỉnh thông số ở mốc BT nào thì mẻ này chỉnh y như vậy khi BT đạt mốc đó '
+              '(trước TP thì theo thời gian).\n\n'
               'Bấm AUTO lần nữa để quay về điều khiển tay.',
           ok: 'Bật');
       if (!ok) return;
@@ -224,10 +340,6 @@ class _RoastScreenState extends State<RoastScreen> {
         c.settings.showBackground = !c.settings.showBackground;
         await c.applySettings(c.settings);
         break;
-      case 'bg_clear':
-        await c.setBackgroundFile(null);
-        _msg('Đã bỏ đường nền');
-        break;
       case 'settings':
         await Navigator.of(context).push(MaterialPageRoute(builder: (_) => SettingsScreen(c: c)));
         break;
@@ -245,9 +357,12 @@ class _RoastScreenState extends State<RoastScreen> {
       padding: const EdgeInsets.only(left: 8),
       child: Row(
         children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: Image.asset('assets/icon/app_icon.png', width: 32, height: 32),
+          ),
+          const SizedBox(width: 8),
           if (compact) ...[
-            PredictionLcd(label: c.prediction(false).$1, value: c.prediction(false).$2),
-            PredictionLcd(label: c.prediction(true).$1, value: c.prediction(true).$2),
             const Spacer(),
           ] else
           Expanded(
@@ -263,7 +378,7 @@ class _RoastScreenState extends State<RoastScreen> {
                   [
                     'Modbus ${c.settings.host}:${c.settings.port}',
                     if (c.background != null && c.settings.showBackground)
-                      'Nền: ${c.background!.title.isNotEmpty ? c.background!.title : c.backgroundFile}',
+                      'Profile Auto: ${c.background!.title.isNotEmpty ? c.background!.title : c.backgroundFile}',
                     if (c.dirty && c.hasData && !c.isOn) 'chưa lưu',
                   ].join('  •  '),
                   maxLines: 1,
@@ -274,6 +389,7 @@ class _RoastScreenState extends State<RoastScreen> {
             ),
           ),
           if (!compact) ...[
+            SizedBox(width: 150, child: _profileAutoButton()),
             PredictionLcd(label: c.prediction(false).$1, value: c.prediction(false).$2),
             PredictionLcd(label: c.prediction(true).$1, value: c.prediction(true).$2),
           ],
@@ -295,16 +411,12 @@ class _RoastScreenState extends State<RoastScreen> {
                   enabled: !c.isOn && c.hasData,
                   child: const ListTile(leading: Icon(Icons.save), title: Text('Lưu mẻ rang'))),
               const PopupMenuItem(
-                  value: 'history', child: ListTile(leading: Icon(Icons.history), title: Text('Lịch sử / Profile nền'))),
+                  value: 'history', child: ListTile(leading: Icon(Icons.history), title: Text('Lịch sử rang'))),
               PopupMenuItem(
                   value: 'bg_toggle',
                   child: ListTile(
                       leading: Icon(c.settings.showBackground ? Icons.layers_clear : Icons.layers),
-                      title: Text(c.settings.showBackground ? 'Ẩn đường nền' : 'Hiện đường nền'))),
-              PopupMenuItem(
-                  value: 'bg_clear',
-                  enabled: c.background != null,
-                  child: const ListTile(leading: Icon(Icons.delete_sweep), title: Text('Bỏ profile nền'))),
+                      title: Text(c.settings.showBackground ? 'Ẩn đường Profile Auto' : 'Hiện đường Profile Auto'))),
               const PopupMenuItem(value: 'settings', child: ListTile(leading: Icon(Icons.settings), title: Text('Cài đặt'))),
             ],
           ),
@@ -436,6 +548,16 @@ class _RoastScreenState extends State<RoastScreen> {
     return Column(
       children: [
         _topBar(true),
+        SizedBox(
+          height: 46,
+          child: Row(children: [
+            const SizedBox(width: 4),
+            Expanded(child: _profileAutoButton()),
+            PredictionLcd(label: c.prediction(false).$1, value: c.prediction(false).$2),
+            PredictionLcd(label: c.prediction(true).$1, value: c.prediction(true).$2),
+            const SizedBox(width: 4),
+          ]),
+        ),
         SizedBox(height: 110, child: LcdPanel(c: c, vertical: false)),
         Expanded(child: _chart()),
         if (ctrls.isNotEmpty)

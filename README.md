@@ -11,9 +11,9 @@ Giao diện mô phỏng theo Artisan. File lưu ra là `.alog`, **mở được 
 | 2 | Đồ thị nhiệt độ + **ΔBT (RoR, °C/phút)** + đồng hồ dự đoán **»DRY / »FCs** | RoR tính bằng hồi quy tuyến tính trên 20 giây (giống mặc định của Artisan), có làm mượt |
 | 3 | **Tự nhận** CHARGE, TP, DRY END, FC START, DROP | Theo đúng thuật toán Artisan (Auto CHARGE/DROP, TP). DRY END = 150°C, FC START = 198°C (sửa trong Cài đặt). Sửa tay: Menu → Sự kiện |
 | 4 | Lưu mẻ rang, **lịch sử**, mở xem lại | Lưu `.alog` trong bộ nhớ app; tìm kiếm; nhập / xuất file |
-| 5 | **Profile nền** (background) để rang theo | Căn theo CHARGE; có sẵn 1 profile mẫu |
+| 5 | **Profile Auto** hiện làm đường nền để rang theo | Căn theo CHARGE |
 | 6 | **Điều khiển gas, quạt, trống** + **nút tuỳ chỉnh** | Thanh trượt và nút dùng **lệnh Modbus Command giống Artisan**: `write([3,0,{}])`, `writem(3,1,{})`, `wcoil`… Nút loại ±Air/±Burner cộng/trừ giá trị |
-| 7 | **Rang tự động (AUTO)** | PID bám BT của profile nền, giống Artisan *PID → Background Follow*. Tự chỉnh Gas; cài Kp/Ki/Kd, Lookahead trong Cài đặt |
+| 7 | **Rang tự động (AUTO)** | Chọn mẻ mẫu bằng nút **Profile Auto**. Lúc CHARGE đặt Gas/Trống/Quạt như mẻ mẫu; sau đó chỉnh lại tại đúng các mốc BT mà mẻ mẫu đã chỉnh (giống Artisan *Playback Events – theo BT*) |
 
 ## 1. Cài môi trường (làm 1 lần, trên Windows)
 
@@ -52,7 +52,7 @@ Kết nối điện thoại vào WiFi của bộ chuyển đổi Modbus, rồi b
 3. Thanh trượt bên trái (nằm dưới đáy nếu cầm dọc) dùng để điều khiển Gas, Quạt, Trống. Mỗi lần thả tay, app gửi lệnh Modbus và ghi lại một sự kiện. Sự kiện hiện trên đồ thị dạng bậc thang, ví dụ `B60`.
 4. Mở **Menu ☰** để vào:
    - **Thuộc tính mẻ rang**: tên mẻ, loại hạt, khối lượng vào/ra, ghi chú
-   - **Lịch sử / Profile nền**: mở xem, đặt làm nền, xuất `.alog`, nhập `.alog` từ Artisan, xoá
+   - **Lịch sử rang**: mở xem, xuất `.alog`, nhập `.alog` từ Artisan, xoá
    - **Cài đặt**: kết nối, kênh đọc, điều khiển, trục đồ thị
 5. Xoay ngang điện thoại để có bố cục giống Artisan nhất: điều khiển bên trái, đồ thị ở giữa, LCD bên phải.
 
@@ -109,7 +109,7 @@ lib/
   logic/ror.dart                tính RoR
   logic/roast_controller.dart   lấy mẫu, sự kiện, điều khiển, nền, dự đoán, rang tự động
   logic/auto_events.dart        tự nhận CHARGE/TP/DRY/FCs/DROP (theo Artisan)
-  logic/pid.dart                PID phần mềm (theo artisanlib/pid.py)
+  logic/auto_replay.dart        rang tự động: phát lại thay đổi Gas/Trống/Quạt theo BT
   modbus/modbus_command.dart    lệnh Modbus Command kiểu Artisan
   ui/                           giao diện (đồ thị, LCD, nút, cài đặt, lịch sử)
 assets/profiles/                profile mẫu (tự tạo bằng mô phỏng)

@@ -199,10 +199,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final e = b.command.isEmpty ? null : ModbusCommandRunner.validate(b.command);
       if (e != null) return 'Nút ${b.label}: $e';
     }
-    if (s.pidDutyMin < 0 || s.pidDutyMax > 100 || s.pidDutyMin >= s.pidDutyMax) {
-      return 'Duty min/max phải trong 0–100 và min < max';
-    }
-    if (s.pidKp < 0 || s.pidKi < 0 || s.pidKd < 0) return 'Kp, Ki, Kd không được âm';
     if (s.fcStartTemp <= s.dryEndTemp) return 'Nhiệt độ FC START phải lớn hơn DRY END';
     if (s.tempMax <= s.tempMin + 10) return 'Trục nhiệt độ: Max phải lớn hơn Min';
     if (s.rorMax <= s.rorMin) return 'Trục RoR: Max phải lớn hơn Min';
@@ -345,46 +341,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: s.autoDrop,
             onChanged: (v) => setState(() => s.autoDrop = v),
           ),
-          _section('Rang tự động theo profile nền (PID)', icon: Icons.precision_manufacturing),
+          _section('Rang tự động (AUTO)', icon: Icons.precision_manufacturing),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
             child: Text(
-              'Giống Artisan: Control > PID > Mode "Background Follow", nguồn BT. App tự chỉnh thanh trượt '
-              'để BT bám đường BT của profile nền. Bấm nút AUTO trên màn hình rang để bật/tắt.',
+              'Chọn mẻ mẫu bằng nút "Profile Auto" trên màn hình rang, bấm ON rồi bấm AUTO. '
+              'Lúc CHARGE, Gas / Trống / Quạt được đặt về đúng giá trị của mẻ mẫu lúc CHARGE. '
+              'Sau đó, mỗi khi mẻ mẫu đã thay đổi Gas / Trống / Quạt ở một mốc BT nào, mẻ hiện tại cũng thay đổi '
+              'như vậy khi BT đạt mốc đó (trước TP thì theo thời gian) – giống "Playback Events – theo BT" của Artisan.',
               style: TextStyle(fontSize: 12, color: Colors.black54),
-            ),
-          ),
-          _row([
-            _dropdown<int>('Điều khiển thanh trượt', s.pidTarget,
-                {for (var i = 0; i < 4; i++) i: '${s.controls[i].label} (${AppSettings.etypeNames[i]})'},
-                (v) => s.pidTarget = v),
-            _field('Lookahead', '${s.pidLookahead}', (v) => s.pidLookahead = _int(v) ?? s.pidLookahead,
-                suffix: 'giây', helper: 'Nhìn trước đường nền'),
-          ]),
-          _row([
-            _field('Kp', _num(s.pidKp), (v) => s.pidKp = _dbl(v) ?? s.pidKp, decimal: true),
-            _field('Ki', _num(s.pidKi), (v) => s.pidKi = _dbl(v) ?? s.pidKi, decimal: true),
-            _field('Kd', _num(s.pidKd), (v) => s.pidKd = _dbl(v) ?? s.pidKd, decimal: true),
-          ]),
-          _row([
-            _field('Duty min', '${s.pidDutyMin}', (v) => s.pidDutyMin = _int(v) ?? s.pidDutyMin, suffix: '%'),
-            _field('Duty max', '${s.pidDutyMax}', (v) => s.pidDutyMax = _int(v) ?? s.pidDutyMax, suffix: '%'),
-            _field('Duty steps', '${s.pidDutySteps}', (v) => s.pidDutySteps = _int(v) ?? s.pidDutySteps),
-          ]),
-          SwitchListTile(
-            title: const Text('Tự tắt rang tự động khi DROP'),
-            value: s.pidStopAtDrop,
-            onChanged: (v) => setState(() => s.pidStopAtDrop = v),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: TextButton(
-              onPressed: () => setState(() {
-                s.pidKp = 15;
-                s.pidKi = 0.01;
-                s.pidKd = 20;
-              }),
-              child: const Text('Đặt lại Kp/Ki/Kd mặc định của Artisan (15 / 0.01 / 20)'),
             ),
           ),
           _section('Đồ thị', icon: Icons.show_chart),

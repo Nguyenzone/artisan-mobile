@@ -6,7 +6,7 @@ import '../models/roast_profile.dart';
 import '../services/roast_storage.dart';
 import 'artisan_colors.dart';
 
-/// Lịch sử mẻ rang: mở xem, đặt làm profile nền, nhập / xuất file .alog, xoá.
+/// Lịch sử rang: mở xem, nhập / xuất file .alog, xoá.
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key, required this.c});
 
@@ -113,20 +113,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
-  Future<void> _setBackground(RoastSummary s) async {
-    try {
-      await c.setBackgroundFile(s.fileName);
-      if (!c.settings.showBackground) {
-        c.settings.showBackground = true;
-        await c.applySettings(c.settings);
-      }
-      _msg('Đã đặt "${s.title}" làm profile nền');
-      setState(() {});
-    } catch (e) {
-      _msg('Lỗi: $e', error: true);
-    }
-  }
-
   Future<void> _delete(RoastSummary s) async {
     final go = await showDialog<bool>(
       context: context,
@@ -148,7 +134,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Widget _tile(RoastSummary s) {
-    final isBg = c.backgroundFile == s.fileName;
     final isCur = c.currentFile == s.fileName;
     final parts = <String>[
       if (s.totalTime != null) 'Tổng ${fmtTime(s.totalTime)}',
@@ -161,8 +146,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: isBg ? AC.buttonSelected : (s.error != null ? Colors.grey : AC.buttonMajor),
-          child: Icon(isBg ? Icons.layers : (s.error != null ? Icons.error_outline : Icons.local_fire_department),
+          backgroundColor: s.error != null ? Colors.grey : AC.buttonMajor,
+          child: Icon(s.error != null ? Icons.error_outline : Icons.local_fire_department,
               color: Colors.white),
         ),
         title: Text(s.title, maxLines: 1, overflow: TextOverflow.ellipsis,
@@ -171,7 +156,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
           [
             '${_date(s.date)}${s.beans.isNotEmpty ? '  •  ${s.beans}' : ''}',
             if (s.error != null) 'Lỗi đọc file: ${s.error}' else parts.join('  •  '),
-            if (isBg) 'Đang dùng làm profile nền',
           ].join('\n'),
           maxLines: 3,
           overflow: TextOverflow.ellipsis,
@@ -183,9 +167,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
             switch (v) {
               case 'open':
                 _open(s);
-                break;
-              case 'bg':
-                _setBackground(s);
                 break;
               case 'export':
                 _export(s);
@@ -200,10 +181,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 value: 'open',
                 enabled: s.error == null,
                 child: const ListTile(leading: Icon(Icons.show_chart), title: Text('Mở xem'))),
-            PopupMenuItem(
-                value: 'bg',
-                enabled: s.error == null,
-                child: const ListTile(leading: Icon(Icons.layers), title: Text('Đặt làm profile nền'))),
             const PopupMenuItem(
                 value: 'export', child: ListTile(leading: Icon(Icons.ios_share), title: Text('Xuất file .alog'))),
             const PopupMenuItem(
@@ -218,7 +195,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Lịch sử mẻ rang'),
+        title: const Text('Lịch sử rang'),
         actions: [
           IconButton(tooltip: 'Nhập file .alog', icon: const Icon(Icons.file_open), onPressed: _import),
           IconButton(tooltip: 'Tải lại', icon: const Icon(Icons.refresh), onPressed: _reload),

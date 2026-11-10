@@ -205,17 +205,6 @@ class AppSettings {
   double fcStartTemp = 198;
   bool autoDrop = true;
 
-  // Rang tự động: PID bám BT của profile nền (Artisan: PID > Background Follow)
-  double pidKp = 15.0;
-  double pidKi = 0.01;
-  double pidKd = 20.0;
-  int pidLookahead = 0; // giây – Artisan "Lookahead"
-  int pidTarget = 3; // thanh trượt nhận đầu ra PID: 0 Air, 1 Drum, 2 Damper, 3 Burner
-  int pidDutyMin = 0; // %
-  int pidDutyMax = 100; // %
-  int pidDutySteps = 1;
-  bool pidStopAtDrop = true;
-
   // Đồ thị
   double tempMin = 0;
   double tempMax = 275;
@@ -277,15 +266,6 @@ class AppSettings {
         'autoFcStart': autoFcStart,
         'fcStartTemp': fcStartTemp,
         'autoDrop': autoDrop,
-        'pidKp': pidKp,
-        'pidKi': pidKi,
-        'pidKd': pidKd,
-        'pidLookahead': pidLookahead,
-        'pidTarget': pidTarget,
-        'pidDutyMin': pidDutyMin,
-        'pidDutyMax': pidDutyMax,
-        'pidDutySteps': pidDutySteps,
-        'pidStopAtDrop': pidStopAtDrop,
         'tempMin': tempMin,
         'tempMax': tempMax,
         'rorMin': rorMin,
@@ -346,15 +326,6 @@ class AppSettings {
     s.autoFcStart = g<bool>('autoFcStart') ?? s.autoFcStart;
     s.fcStartTemp = g<num>('fcStartTemp')?.toDouble() ?? s.fcStartTemp;
     s.autoDrop = g<bool>('autoDrop') ?? s.autoDrop;
-    s.pidKp = g<num>('pidKp')?.toDouble() ?? s.pidKp;
-    s.pidKi = g<num>('pidKi')?.toDouble() ?? s.pidKi;
-    s.pidKd = g<num>('pidKd')?.toDouble() ?? s.pidKd;
-    s.pidLookahead = g<num>('pidLookahead')?.toInt() ?? s.pidLookahead;
-    s.pidTarget = g<num>('pidTarget')?.toInt() ?? s.pidTarget;
-    s.pidDutyMin = g<num>('pidDutyMin')?.toInt() ?? s.pidDutyMin;
-    s.pidDutyMax = g<num>('pidDutyMax')?.toInt() ?? s.pidDutyMax;
-    s.pidDutySteps = g<num>('pidDutySteps')?.toInt() ?? s.pidDutySteps;
-    s.pidStopAtDrop = g<bool>('pidStopAtDrop') ?? s.pidStopAtDrop;
     s.tempMin = g<num>('tempMin')?.toDouble() ?? s.tempMin;
     s.tempMax = g<num>('tempMax')?.toDouble() ?? s.tempMax;
     s.rorMin = g<num>('rorMin')?.toDouble() ?? s.rorMin;

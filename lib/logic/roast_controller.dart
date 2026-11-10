@@ -9,7 +9,7 @@ import '../services/roast_storage.dart';
 import '../services/roaster_device.dart';
 import '../services/settings.dart';
 import 'auto_events.dart';
-import 'pid.dart';
+import 'auto_replay.dart';
 import 'ror.dart';
 
 const String kSampleAsset = 'assets/profiles/profile_mau_rang_vua.alog';
@@ -56,11 +56,11 @@ class RoastController extends ChangeNotifier {
   /// Thông báo ngắn (ví dụ "Tự nhận CHARGE") cho giao diện hiển thị.
   final ValueNotifier<String?> notice = ValueNotifier<String?>(null);
 
-  // ------------------------------------------------------------ rang tự động (PID)
-  final Pid pid = Pid();
+  // ------------------------------------------------------------ rang tự động
   bool _autoRoast = false;
   bool get autoRoast => _autoRoast;
-  double? sv; // điểm đặt hiện tại (BT của profile nền)
+  AutoReplay? _replay;
+  AutoReplay? get replay => _replay;
 
   /// Trạng thái nút (0/1, giống buttonStates của Artisan) và nút bấm gần nhất.
   List<int> buttonStates = [];
@@ -174,7 +174,7 @@ class RoastController extends ChangeNotifier {
     lastError = r.error;
     _autoDetect();
     _recomputeRoR();
-    _pidStep(t, r.bt);
+    _autoRoastStep();
     notifyListeners();
   }
 
@@ -244,42 +244,16 @@ class RoastController extends ChangeNotifier {
 
   // ------------------------------------------------------------ rang tự động
 
-  /// BT của profile nền tại [rel] giây sau CHARGE (nội suy tuyến tính), null nếu ngoài phạm vi.
-  double? backgroundBTat(double rel) {
-    final bg = background;
-    if (bg == null || bg.timex.isEmpty || !bg.hasCharge) return null;
-    final t = bg.chargeTime + rel;
-    final drop = bg.indexOf(RoastEvent.drop);
-    final lastT = drop != null ? bg.timex[drop] : bg.timex.last;
-    if (t > lastT || t < bg.timex.first) return null;
-    var i = 0;
-    while (i + 1 < bg.timex.length && bg.timex[i + 1] < t) {
-      i++;
-    }
-    if (i + 1 >= bg.timex.length) return bg.bt[i] < 0 ? null : bg.bt[i];
-    final a = bg.bt[i], b = bg.bt[i + 1];
-    if (a < 0 || b < 0) return null;
-    final t0 = bg.timex[i], t1 = bg.timex[i + 1];
-    return t1 == t0 ? a : a + (b - a) * (t - t0) / (t1 - t0);
-  }
-
-  /// SV theo Artisan calcSV() chế độ Follow Background:
-  /// trước CHARGE = BT lúc CHARGE của nền; sau CHARGE = BT nền tại (thời gian + lookahead).
-  double? _calcSV() {
-    final bg = background;
-    if (bg == null || !bg.hasCharge) return null;
-    if (!profile.hasCharge) return bg.bt[bg.timeindex[EventIdx.charge]];
-    final rel = profile.timex.last - profile.chargeTime + settings.pidLookahead;
-    return backgroundBTat(rel);
-  }
-
   String? canAutoRoast() {
     if (!_on) return 'Bấm ON để kết nối máy rang trước';
     final bg = background;
-    if (bg == null) return 'Chưa có profile nền. Vào Menu → Lịch sử / Profile nền để chọn.';
-    if (!bg.hasCharge) return 'Profile nền không có CHARGE';
-    final c = settings.controls[settings.pidTarget];
-    if (c.command.trim().isEmpty) return 'Thanh trượt ${c.label} chưa có lệnh Modbus';
+    if (bg == null) return 'Chưa chọn Profile Auto. Bấm nút "Profile Auto" để chọn.';
+    if (!bg.hasCharge) return 'Profile Auto không có CHARGE';
+    final r = AutoReplay(bg);
+    if (r.totalCount == 0 && r.chargeValues.isEmpty) {
+      return 'Profile Auto không có thay đổi Gas / Trống / Quạt nào để làm theo';
+    }
+    if (profile.indexOf(RoastEvent.drop) != null) return 'Mẻ này đã DROP';
     return null;
   }
 
@@ -293,65 +267,44 @@ class RoastController extends ChangeNotifier {
     }
     final err = canAutoRoast();
     if (err != null) return err;
-    pid
-      ..kp = settings.pidKp
-      ..ki = settings.pidKi
-      ..kd = settings.pidKd
-      ..outMin = 0
-      ..outMax = 100
-      ..dutyMin = settings.pidDutyMin
-      ..dutyMax = settings.pidDutyMax
-      ..dutySteps = settings.pidDutySteps < 1 ? 1 : settings.pidDutySteps
-      ..control = _pidOutput;
-    sv = _calcSV();
-    if (sv != null) pid.setTarget(sv!);
-    pid.reset();
-    pid.on();
+    _replay = AutoReplay(background!);
     _autoRoast = true;
-    notice.value = 'Đã bật rang tự động theo BT của profile nền (điều khiển ${settings.controls[settings.pidTarget].label})';
+    notice.value = profile.hasCharge
+        ? 'Đã bật rang tự động (${_replay!.totalCount} mốc điều chỉnh)'
+        : 'Đã bật rang tự động – chờ CHARGE (${_replay!.totalCount} mốc điều chỉnh)';
+    // đã CHARGE rồi thì áp dụng ngay các mốc đã qua
+    if (profile.hasCharge) _applyReplay(_replay!.step(profile));
     notifyListeners();
     return null;
   }
 
   void _stopAutoRoast() {
-    pid.off();
     _autoRoast = false;
+    _replay = null;
   }
 
-  void _pidStep(double t, double? bt) {
-    final newSv = _calcSV();
-    if (_autoRoast) {
-      if (settings.pidStopAtDrop && profile.indexOf(RoastEvent.drop) != null) {
-        _stopAutoRoast();
-        notice.value = 'DROP – đã tắt rang tự động';
-        return;
-      }
-      if (newSv != null) {
-        sv = newSv;
-        pid.setTarget(newSv);
-      }
-    }
-    pid.update(bt, t);
-  }
-
-  /// Đầu ra PID (0..100 %) -> giá trị thanh trượt (giống setEnergy() của Artisan).
-  void _pidOutput(double duty) {
-    final i = settings.pidTarget;
-    final c = settings.controls[i];
-    final raw = c.min + (c.max - c.min) * duty.clamp(0, 100) / 100.0;
-    final step = c.step < 1 ? 1 : c.step;
-    final v = ((raw / step).round() * step).clamp(c.min, c.max).toDouble();
-    if (v == controlValues[i] && profile.events.isNotEmpty) {
-      // giá trị không đổi: vẫn gửi lại lệnh (Artisan gửi lại định kỳ) nhưng không ghi sự kiện
-      final dev = _device;
-      if (dev != null) {
-        dev.writeControl(i, v).catchError((Object e) {
-          lastError = 'Rang tự động: $e';
-        });
-      }
+  void _autoRoastStep() {
+    final r = _replay;
+    if (!_autoRoast || r == null) return;
+    if (profile.indexOf(RoastEvent.drop) != null) {
+      _stopAutoRoast();
+      notice.value = 'DROP – đã tắt rang tự động';
       return;
     }
-    commitControl(i, v);
+    final wasCharged = r.chargeApplied;
+    final vals = r.step(profile);
+    if (vals.isEmpty) return;
+    _applyReplay(vals);
+    final names = vals.entries.map((e) => '${settings.controls[e.key].label} ${e.value.round()}').join(', ');
+    notice.value = !wasCharged ? 'CHARGE – đặt theo profile mẫu: $names' : 'Auto: $names';
+  }
+
+  void _applyReplay(Map<int, double> vals) {
+    vals.forEach((type, v) {
+      final c = settings.controls[type];
+      final nv = v.clamp(c.min.toDouble(), c.max.toDouble()).toDouble();
+      commitControl(type, nv);
+    });
   }
 
   // ------------------------------------------------------------ dự đoán DRY / FCs
@@ -363,12 +316,11 @@ class RoastController extends ChangeNotifier {
     final p = profile;
     final name = fcs ? 'FCs' : 'DRY';
     if (p.timex.isEmpty || !p.hasCharge) return ('»$name', '--:--');
-    final drop = p.indexOf(RoastEvent.drop);
     final tx = p.timex.last;
     final ev = p.indexOf(fcs ? RoastEvent.fcStart : RoastEvent.dryEnd);
     if (ev != null) {
-      final end = drop != null ? p.timex[drop] : tx;
-      return ('$name»', fmtTime(end - p.timex[ev]));
+      // đã qua mốc: đồng hồ dừng, hiện thời điểm DRY / FCs (tính từ CHARGE)
+      return (name, fmtTime(p.rel(ev)));
     }
     final bt = p.bt.last;
     final ror = deltaBT;
