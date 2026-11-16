@@ -343,7 +343,17 @@ class RoastController extends ChangeNotifier {
     final tx = p.timex.last;
     final ev = p.indexOf(fcs ? RoastEvent.fcStart : RoastEvent.dryEnd);
     if (ev != null) {
-      // đã qua mốc: đồng hồ dừng, hiện thời điểm DRY / FCs (tính từ CHARGE)
+      if (fcs) {
+        // Sau FCs: DTR (Development Time Ratio) = thời gian phát triển / tổng thời gian rang,
+        // tính tới hiện tại (hoặc tới DROP) – giống ô DEV% của Artisan.
+        final drop = p.indexOf(RoastEvent.drop);
+        final end = drop != null ? p.timex[drop] : (_on ? clock.value : tx);
+        final total = end - p.chargeTime;
+        final dev = end - p.timex[ev];
+        if (total <= 0) return ('DTR', '--.-%');
+        return ('DTR', '${(dev * 100 / total).toStringAsFixed(1)}%');
+      }
+      // DRY: đồng hồ dừng, hiện thời điểm DRY END (tính từ CHARGE)
       return (name, fmtTime(p.rel(ev)));
     }
     final bt = p.bt.last;
