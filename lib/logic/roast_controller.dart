@@ -328,6 +328,13 @@ class RoastController extends ChangeNotifier {
       final c = settings.controls[type];
       final nv = v.clamp(c.min.toDouble(), c.max.toDouble()).toDouble();
       commitControl(type, nv);
+      // Nhắc lại lệnh sau 3 giây (WiFi chập chờn có thể làm mất lệnh lần đầu).
+      // Nếu trong 3 giây đó bạn đã chỉnh tay sang giá trị khác thì không nhắc lại.
+      Timer(const Duration(seconds: 3), () {
+        if (!_autoRoast || !_on) return;
+        if (controlValues[type] != nv) return;
+        _sendControl(type, nv);
+      });
     });
   }
 
@@ -449,17 +456,44 @@ class RoastController extends ChangeNotifier {
 
   /// Gửi giá trị điều khiển xuống máy rang và ghi thành sự kiện (special event).
   Future<void> commitControl(int i, double v) async {
+    final changed = controlValues[i] != v;
     controlValues[i] = v;
-    _recordControlEvent(i, v);
+    if (changed || profile.events.every((x) => x.type != i)) _recordControlEvent(i, v);
     notifyListeners();
+    await _sendControl(i, v);
+  }
+
+  /// Gửi lệnh thanh trượt xuống máy; lỗi thì thử lại 1 lần sau 0,5 giây.
+  /// Trả về true nếu gửi thành công.
+  Future<bool> _sendControl(int i, double v) async {
     final dev = _device;
-    if (dev == null) return;
-    try {
-      await dev.writeControl(i, v);
-    } catch (e) {
-      lastError = 'Lỗi ghi ${settings.controls[i].label}: $e';
-      notifyListeners();
+    if (dev == null) return false;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        await dev.writeControl(i, v);
+        return true;
+      } catch (e) {
+        if (attempt == 0) {
+          await Future<void>.delayed(const Duration(milliseconds: 500));
+          continue;
+        }
+        _showWriteError('Lỗi gửi lệnh ${settings.controls[i].label} ${v.round()}: $e');
+      }
     }
+    return false;
+  }
+
+  /// Lỗi gửi lệnh được giữ trên dòng trạng thái 15 giây (không bị lần đọc nhiệt độ xoá mất).
+  String? writeError;
+  DateTime? _writeErrorAt;
+  String? get activeWriteError =>
+      (_writeErrorAt != null && DateTime.now().difference(_writeErrorAt!).inSeconds < 15) ? writeError : null;
+
+  void _showWriteError(String msg) {
+    writeError = msg;
+    _writeErrorAt = DateTime.now();
+    notice.value = msg;
+    notifyListeners();
   }
 
   void _recordControlEvent(int type, double v) {

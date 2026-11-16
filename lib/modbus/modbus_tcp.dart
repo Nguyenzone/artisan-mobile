@@ -100,12 +100,16 @@ class ModbusTcpClient {
 
   Future<Uint8List> _transact(int unitId, List<int> pdu) {
     final completer = Completer<Uint8List>();
+    final isWrite = pdu.isNotEmpty && (pdu[0] == 5 || pdu[0] == 6 || pdu[0] == 15 || pdu[0] == 16);
     _queue = _queue.then((_) async {
       try {
         completer.complete(await _doTransact(unitId, pdu));
       } catch (e, st) {
         completer.completeError(e, st);
       }
+      // Khoảng nghỉ giữa các lệnh (giống Artisan: 30 ms sau lệnh đọc, 80 ms sau lệnh ghi)
+      // để bộ chuyển đổi WiFi–RS485 kịp xử lý, không bỏ sót lệnh.
+      await Future<void>.delayed(Duration(milliseconds: isWrite ? 80 : 30));
     });
     return completer.future;
   }

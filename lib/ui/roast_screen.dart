@@ -495,7 +495,7 @@ class _RoastScreenState extends State<RoastScreen> {
   }
 
   Widget _statusLine() {
-    final err = c.lastError;
+    final err = c.activeWriteError ?? c.lastError;
     return Container(
       height: 18,
       padding: const EdgeInsets.symmetric(horizontal: 8),
