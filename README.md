@@ -62,15 +62,14 @@ Vào **Cài đặt**, nhập IP và cổng (thường là 502) của PLC hoặc 
 
 Bảng thanh ghi mặc định (sửa được trong Cài đặt):
 
-| Kênh | Slave | Thanh ghi | Mã hàm | Kiểu | Chia cho |
+| Kênh | Slave | Thanh ghi | Mã hàm / lệnh | Kiểu | Chia cho |
 |------|-------|-----------|--------|------|----------|
-| BT – nhiệt độ hạt | 1 | 0 | 3 | INT16 | 10 |
-| ET – nhiệt độ môi trường | 1 | 1 | 3 | INT16 | 10 |
-| CT – nhiệt độ buồng đốt | 1 | 2 | 3 | INT16 | 10 |
-| Gas (Burner) – ghi | 1 | 10 | 6 | 0–100 | |
-| Quạt (Air) – ghi | 1 | 11 | 6 | 0–100 | |
-| Trống (Drum) – ghi | 1 | 12 | 6 | 0–100 | |
-| Van gió (Damper) – ghi (ẩn) | 1 | 13 | 6 | 0–100 | |
+| BT – nhiệt độ hạt | 1 | 0 | 3 | UINT16 | 1 |
+| ET – nhiệt độ môi trường | 2 | 0 | 3 | UINT16 | 1 |
+| CT – nhiệt độ buồng đốt | 5 | 0 | 3 | UINT16 | 1 |
+| Gas (Burner) – ghi | 3 | 0 | `write([3,0,{}])` | 0–99 | |
+| Quạt (Air) – ghi | 3 | 1 | `write([3,1,{}])` | 0–99 | |
+| Trống (Drum) – ghi | 3 | 2 | `write([3,2,{}])` | 0–99 | |
 
 - Địa chỉ thanh ghi tính **từ 0**. Ví dụ thanh ghi 40001 nhập là 0, thanh ghi 40011 nhập là 10.
 - "Chia cho 10": PLC gửi 2005 thì app hiểu là 200.5 °C.

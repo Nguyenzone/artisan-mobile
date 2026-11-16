@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import '../logic/roast_controller.dart';
@@ -242,7 +243,6 @@ class ControlSlider extends StatelessWidget {
     final max = cfg.max > cfg.min ? cfg.max.toDouble() : min + 1;
     final v = c.controlValues[index].clamp(min, max).toDouble();
     final step = cfg.step < 1 ? 1 : cfg.step;
-    final divisions = ((max - min) / step).round();
     final enabled = c.isOn;
 
     void bump(int dir) {
@@ -251,22 +251,16 @@ class ControlSlider extends StatelessWidget {
       c.commitControl(index, nv);
     }
 
-    final slider = SliderTheme(
-      data: SliderTheme.of(context).copyWith(
-        activeTrackColor: color,
-        thumbColor: color,
-        inactiveTrackColor: color.withAlpha(0x40),
-        trackHeight: 4,
-        showValueIndicator: ShowValueIndicator.never,
-      ),
-      child: Slider(
-        value: v,
-        min: min,
-        max: max,
-        divisions: divisions > 0 ? divisions : null,
-        onChanged: enabled ? (x) => c.setControlLocal(index, x) : null,
-        onChangeEnd: enabled ? (x) => c.commitControl(index, x) : null,
-      ),
+    final slider = TapStepSlider(
+      value: v,
+      min: min,
+      max: max,
+      step: step.toDouble(),
+      tapStep: 5,
+      color: color,
+      enabled: enabled,
+      onChanged: (x) => c.setControlLocal(index, x),
+      onChangeEnd: (x) => c.commitControl(index, x),
     );
 
     final valueBox = Container(
@@ -417,4 +411,142 @@ class PredictionLcd extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Thanh trượt chống bấm nhầm (màn hình nhỏ):
+/// * Chỉ kéo được khi chạm vào CHẤM TRÒN.
+/// * Chạm lên thanh phía trên chấm tròn = +[tapStep], phía dưới = −[tapStep].
+/// Bọc trong RotatedBox để thành thanh dọc (toạ độ chạm tự xoay theo).
+class TapStepSlider extends StatefulWidget {
+  const TapStepSlider({
+    super.key,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.color,
+    required this.onChanged,
+    required this.onChangeEnd,
+    this.step = 1,
+    this.tapStep = 5,
+    this.enabled = true,
+  });
+
+  final double value;
+  final double min;
+  final double max;
+  final double step;
+  final double tapStep;
+  final Color color;
+  final bool enabled;
+  final ValueChanged<double> onChanged;
+  final ValueChanged<double> onChangeEnd;
+
+  @override
+  State<TapStepSlider> createState() => _TapStepSliderState();
+}
+
+class _TapStepSliderState extends State<TapStepSlider> {
+  static const double _pad = 14; // lề hai đầu thanh
+  static const double _thumbR = 11;
+  static const double _hitR = 26; // bán kính vùng chạm của chấm tròn
+  bool _dragging = false;
+  double? _dragValue;
+
+  double get _span => (widget.max - widget.min) <= 0 ? 1 : widget.max - widget.min;
+
+  double _xOf(double v, double width) => _pad + (v - widget.min) / _span * (width - 2 * _pad);
+
+  double _valueAt(double x, double width) {
+    final t = ((x - _pad) / (width - 2 * _pad)).clamp(0.0, 1.0);
+    var v = widget.min + t * _span;
+    if (widget.step > 0) v = (v / widget.step).round() * widget.step;
+    return v.clamp(widget.min, widget.max).toDouble();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, box) {
+      final width = box.maxWidth;
+      final shown = _dragValue ?? widget.value;
+      final thumbX = _xOf(shown, width);
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        dragStartBehavior: DragStartBehavior.down, // vị trí bắt đầu = chỗ đặt ngón tay
+        onTapUp: !widget.enabled
+            ? null
+            : (d) {
+                final dx = d.localPosition.dx;
+                if ((dx - thumbX).abs() <= _hitR) return; // chạm đúng chấm tròn: không đổi
+                final dir = dx > thumbX ? 1 : -1;
+                final nv = (widget.value + dir * widget.tapStep).clamp(widget.min, widget.max).toDouble();
+                if (nv != widget.value) widget.onChangeEnd(nv);
+              },
+        onHorizontalDragStart: !widget.enabled
+            ? null
+            : (d) {
+                _dragging = (d.localPosition.dx - thumbX).abs() <= _hitR;
+                if (_dragging) setState(() => _dragValue = widget.value);
+              },
+        onHorizontalDragUpdate: !widget.enabled
+            ? null
+            : (d) {
+                if (!_dragging) return;
+                final v = _valueAt(d.localPosition.dx, width);
+                if (v != _dragValue) {
+                  setState(() => _dragValue = v);
+                  widget.onChanged(v);
+                }
+              },
+        onHorizontalDragEnd: !widget.enabled
+            ? null
+            : (_) {
+                if (_dragging && _dragValue != null) widget.onChangeEnd(_dragValue!);
+                setState(() {
+                  _dragging = false;
+                  _dragValue = null;
+                });
+              },
+        onHorizontalDragCancel: () => setState(() {
+          _dragging = false;
+          _dragValue = null;
+        }),
+        child: CustomPaint(
+          size: Size(width, box.maxHeight.isFinite ? box.maxHeight : 40),
+          painter: _TapStepSliderPainter(
+            thumbX: thumbX,
+            color: widget.enabled ? widget.color : Colors.grey,
+            active: _dragging,
+          ),
+        ),
+      );
+    });
+  }
+}
+
+class _TapStepSliderPainter extends CustomPainter {
+  _TapStepSliderPainter({required this.thumbX, required this.color, required this.active});
+
+  final double thumbX;
+  final Color color;
+  final bool active;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cy = size.height / 2;
+    const pad = _TapStepSliderState._pad;
+    final track = Paint()
+      ..strokeWidth = 4
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(Offset(pad, cy), Offset(size.width - pad, cy), track..color = color.withAlpha(0x40));
+    canvas.drawLine(Offset(pad, cy), Offset(thumbX, cy), track..color = color);
+    if (active) {
+      canvas.drawCircle(Offset(thumbX, cy), _TapStepSliderState._thumbR + 9, Paint()..color = color.withAlpha(0x33));
+    }
+    canvas.drawCircle(Offset(thumbX, cy), _TapStepSliderState._thumbR, Paint()..color = color);
+    canvas.drawCircle(Offset(thumbX, cy), _TapStepSliderState._thumbR - 4, Paint()..color = Colors.white.withAlpha(0x55));
+  }
+
+  @override
+  bool shouldRepaint(covariant _TapStepSliderPainter old) =>
+      old.thumbX != thumbX || old.color != color || old.active != active;
 }

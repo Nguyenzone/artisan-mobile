@@ -176,7 +176,7 @@ class EventButtonConfig {
 
 /// Toàn bộ cài đặt của ứng dụng (lưu trong settings.json).
 class AppSettings {
-  static const int currentVersion = 2;
+  static const int currentVersion = 3;
 
   // Kết nối
   String host = '10.10.100.254';
@@ -223,8 +223,8 @@ class AppSettings {
   String? backgroundFile; // tên file trong thư viện
   bool sampleInstalled = false;
 
-  static InputChannelConfig _defET() => InputChannelConfig(slaveId: 1, address: 0); // Artisan Input 1
-  static InputChannelConfig _defBT() => InputChannelConfig(slaveId: 2, address: 0); // Artisan Input 2
+  static InputChannelConfig _defET() => InputChannelConfig(slaveId: 2, address: 0);
+  static InputChannelConfig _defBT() => InputChannelConfig(slaveId: 1, address: 0);
   static InputChannelConfig _defCT() => InputChannelConfig(slaveId: 5, address: 0); // Artisan Input 6
 
   static List<ControlConfig> defaultControls() => [
@@ -316,6 +316,15 @@ class AppSettings {
           for (final e in bl)
             if (e is Map<String, dynamic>) EventButtonConfig.fromJson(e)
         ];
+      }
+    }
+    if (version < 3) {
+      // Mặc định cũ: ET slave 1, BT slave 2 -> mặc định mới: BT slave 1, ET slave 2 (chỉ đổi nếu chưa sửa tay)
+      bool isOld(InputChannelConfig c, int slave) =>
+          c.slaveId == slave && c.address == 0 && c.functionCode == 3 && c.dataType == 'uint16' && c.divider == 1;
+      if (isOld(s.et, 1) && isOld(s.bt, 2)) {
+        s.et.slaveId = 2;
+        s.bt.slaveId = 1;
       }
     }
     s.samplingInterval = g<num>('samplingInterval')?.toDouble() ?? s.samplingInterval;

@@ -122,6 +122,7 @@ class RoastController extends ChangeNotifier {
     }
     _device = dev;
     autoEvents.reset();
+    _chargeSnapshotDone = false;
     buttonStates = List<int>.filled(settings.buttons.length, 0);
     lastButton = -1;
     profile = RoastProfile(samplingInterval: settings.samplingInterval)..hasCT = settings.ct.enabled;
@@ -172,10 +173,33 @@ class RoastController extends ChangeNotifier {
     curET = r.et;
     curCT = r.ct;
     lastError = r.error;
+    if (profile.timex.length == 1) _snapshotControls(0); // thông số ban đầu khi bấm ON
     _autoDetect();
     _recomputeRoR();
     _autoRoastStep();
+    if (profile.hasCharge && !_chargeSnapshotDone) {
+      // Ghi nhận Gas / Trống / Quạt ngay tại CHARGE để mẻ này dùng làm mẻ mẫu được
+      _snapshotControls(profile.timeindex[EventIdx.charge]);
+      _chargeSnapshotDone = true;
+    }
     notifyListeners();
+  }
+
+  bool _chargeSnapshotDone = false;
+
+  /// Ghi giá trị hiện tại của các thanh trượt đang hiện thành sự kiện tại mẫu [index].
+  void _snapshotControls(int index) {
+    if (index < 0 || index >= profile.timex.length) return;
+    for (var i = 0; i < 4; i++) {
+      if (!settings.controls[i].visible) continue;
+      final same = profile.events.where((x) => x.index == index && x.type == i).toList();
+      if (same.isNotEmpty) {
+        same.first.value = controlValues[i];
+      } else {
+        profile.events.add(SpecialEvent(index: index, type: i, value: controlValues[i]));
+      }
+    }
+    dirty = true;
   }
 
   AutoEventParams get _autoParams => AutoEventParams(
@@ -397,6 +421,7 @@ class RoastController extends ChangeNotifier {
     profile.setEvent(e, null);
     if (e == RoastEvent.charge) {
       autoEvents.chargeDisabled = true; // không tự nhận lại sau khi người dùng bỏ
+      _chargeSnapshotDone = false;
       _recomputeRoR();
     }
     if (e == RoastEvent.drop) autoEvents.dropDisabled = true;
